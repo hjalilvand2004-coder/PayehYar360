@@ -1,0 +1,11 @@
+# state
+node_modules/
+*.pyc
+__pycache__/
+.venv/
+data/
+*.db
+.env
+.pytest_cache/
+build/
+*.spec

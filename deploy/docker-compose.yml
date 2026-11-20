@@ -1,0 +1,118 @@
+# هسته مشترک و اطلاعات پایه — دانشجو۳۶۰
+# استقرار روی میزبان 188.212.96.235 — پورت انتشار: 8094
+# اجرا:  cp env.example .env  (مقادیر حساس را کامل کنید)  سپس:  docker compose up -d
+
+name: student360-core
+
+services:
+  postgresql:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shared_core
+      POSTGRES_USER: core
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD لازم است}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U core -d shared_core"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # دیتابیس فقط شبکه داخلی — از بیرون منتشر نمی‌شود
+    networks: [core]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: core
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD لازم است}
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    # Management (15672) عمداً منتشر نمی‌شود؛ در صورت نیاز محدود کنید
+    networks: [core]
+
+  core-api:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ENV: prod
+      DATABASE_URL: postgresql+psycopg://core:${POSTGRES_PASSWORD}@postgresql:5432/shared_core
+      RABBITMQ_URL: amqp://core:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2F
+      DATA_DIR: /srv/data
+      SERVE_FRONTEND_DIR: ""   # فرانت با nginx سرو می‌شود
+    volumes:
+      - coredata:/srv/data
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    # Migration پیش از شروع توسط entrypoint اجرا می‌شود
+    command: ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
+    networks: [core]
+
+  core-outbox-worker:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ENV: prod
+      DATABASE_URL: postgresql+psycopg://core:${POSTGRES_PASSWORD}@postgresql:5432/shared_core
+      RABBITMQ_URL: amqp://core:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2F
+      DATA_DIR: /srv/data
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: ["python", "-m", "app.workers.outbox_worker"]
+    networks: [core]
+
+  core-job-worker:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ENV: prod
+      DATABASE_URL: postgresql+psycopg://core:${POSTGRES_PASSWORD}@postgresql:5432/shared_core
+      RABBITMQ_URL: amqp://core:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2F
+      DATA_DIR: /srv/data
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    command: ["python", "-m", "app.workers.job_worker"]
+    networks: [core]
+
+  core-frontend:
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - core-api
+    ports:
+      - "8094:80"   # ← انتشار روی پورت 8094 (http://188.212.96.235:8094/)
+    networks: [core]
+
+volumes:
+  pgdata:
+  rabbitmqdata:
+  coredata:
+
+networks:
+  core:
+    driver: bridge
