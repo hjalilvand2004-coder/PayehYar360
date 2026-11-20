@@ -84,7 +84,7 @@ DEV_AUTH=false            # در تولید هرگز true نکنید
 | `GET /api/v1/auth/sso/login` | نقطه شروع جریان OIDC — state/verifier در کوکی HttpOnly، ریدایرکت به IdP |
 | `GET /api/v1/auth/sso/callback` | تبادل کد سمت سرور و بازگشت توکن به SPA با fragment (`/#auth=<JWT>`) |
 
-بنابراین آدرس توصیه‌شده برای فیلد «ورود OIDC» در پرتال: `http://188.212.96.235:8094/auth/sso/login` (ورود یک‌کلیکی از کاشی پرتال). جریان فرانت با PKCE روی `/login/callback` نیز همچنان فعال است.
+بنابراین آدرس توصیه‌شده برای فیلد «ورود OIDC» در پرتال: `http://188.212.96.235:8094/api/v1/auth/sso/login` (ورود یک‌کلیکی از کاشی پرتال). جریان فرانت با PKCE روی `/login/callback` نیز همچنان فعال است.
 
 ### ۷.۴. اقدام باقی‌مانده در سمت IdP (پرتال 8086)
 
@@ -96,7 +96,7 @@ DEV_AUTH=false            # در تولید هرگز true نکنید
 **اقدام لازم:** در پرتال دانشجویار۳۶۰، ردیف «سامانه پایه پار۳۶۰» را ویرایش و «ذخیرهٔ تغییرات» شود تا کلاینت OIDC واقعی با این مقادیر ساخته شود:
 
 - Client ID: `payeh360`
-- redirect URI ثبت‌شده: `http://188.212.96.235:8094/auth/sso/callback` (الگوی قرارداد: `{base}/auth/sso/callback`)
-- آدرس ورود OIDC: `http://188.212.96.235:8094/auth/sso/login`
+- redirect URI ثبت‌شده: `http://188.212.96.235:8094/api/v1/auth/sso/callback` (الگوی قرارداد: `{base}/api/v1/auth/sso/callback`)
+- آدرس ورود OIDC: `http://188.212.96.235:8094/api/v1/auth/sso/login`
 
 تا پیش از این ثبت، ورود SSO با پیام IdP مواجه می‌شود؛ سایر مسیرها (حالت dev، جریان PKCE پس از ثبت) آماده و آزمون‌شده است.

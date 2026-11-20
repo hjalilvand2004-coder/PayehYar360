@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PayehYar360 — Shared Core & Master Data",
     description="هسته مشترک و اطلاعات پایه پلتفرم دانشجو۳۶۰ (پایه‌یار۳۶۰) — شرکت ماه‌افزار هوشمند رسا",
-    version="1.0.1",
+    version="1.0.2",
     lifespan=lifespan,
     docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json",
 )
@@ -179,7 +179,7 @@ def meta():
     from app.messaging import rabbitmq
     out = {
         "app": "payehyar360-shared-core",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "env": s.ENV,
         "auth_mode": "dev" if s.DEV_AUTH else "oidc",
         "dev_mode": s.DEV_AUTH,
@@ -193,8 +193,8 @@ def meta():
         "sso": {
             "access_role": s.SSO_ACCESS_ROLE,
             "default_tenant": s.SSO_DEFAULT_TENANT,
-            "login_path": "/auth/sso/login",
-            "callback_path": "/auth/sso/callback",
+            "login_path": "/api/v1/auth/sso/login",
+            "callback_path": "/api/v1/auth/sso/callback",
         },
         "rabbitmq": rabbitmq.state(),
     }

@@ -23,7 +23,7 @@ def _set_out(s: ReferenceSet) -> dict:
 def _item_out(i: ReferenceItem) -> dict:
     return {"id": str(i.id), "set_id": str(i.set_id), "parent_id": str(i.parent_id) if i.parent_id else None,
             "code": i.code, "title": i.title, "sort_order": i.sort_order, "status": i.status,
-            "valid_from": i.valid_from, "valid_to": i.valid_to}
+            "valid_from": i.valid_from, "valid_to": i.valid_to, "attrs": i.attrs}
 
 
 def get_set(db: Session, tenant_id, code: str) -> ReferenceSet:
@@ -86,6 +86,7 @@ def create_item(db: Session, tenant_id, actor: Actor, set_code: str, data: dict,
         code=data["code"].strip(), title=data["title"].strip(),
         sort_order=data.get("sort_order", 0), status="active",
         valid_from=data.get("valid_from"), valid_to=data.get("valid_to"),
+        attrs=data.get("attrs"),
     )
     db.add(item)
     s.version += 1  # نسخه‌بندی مجموعه با هر تغییر آیتم
@@ -111,7 +112,7 @@ def update_item(db: Session, tenant_id, actor: Actor, set_code: str, item_id, da
         raise not_found("آیتم موردنظر یافت نشد.")
     before = _item_out(item)
     changed = []
-    for k in ("title", "sort_order", "status", "valid_from", "valid_to"):
+    for k in ("title", "sort_order", "status", "valid_from", "valid_to", "attrs"):
         if k in data and data[k] is not None and data[k] != getattr(item, k):
             setattr(item, k, data[k])
             changed.append(k)

@@ -94,10 +94,10 @@ def sso_config(request: Request):
         "scope": "openid profile email",
         "label": "ورود یکپارچه سازمانی",
         "provider": "دانشجویار۳۶۰ — پرتال ورود یکپارچه",
-        "login_path": "/auth/sso/login",
-        "login_url": f"{base}/auth/sso/login",
-        "callback_path": "/auth/sso/callback",
-        "redirect_uri": f"{base}/auth/sso/callback",
+        "login_path": "/api/v1/auth/sso/login",
+        "login_url": f"{base}/api/v1/auth/sso/login",
+        "callback_path": "/api/v1/auth/sso/callback",
+        "redirect_uri": f"{base}/api/v1/auth/sso/callback",
     }
 
 
@@ -110,7 +110,7 @@ def sso_login(request: Request):
     challenge = base64.urlsafe_b64encode(
         hashlib.sha256(verifier.encode("ascii")).digest()
     ).rstrip(b"=").decode("ascii")
-    redirect_uri = f"{_public_base(request)}/auth/sso/callback"
+    redirect_uri = f"{_public_base(request)}/api/v1/auth/sso/callback"
     params = {
         "response_type": "code",
         "client_id": settings.OIDC_CLIENT_ID,
@@ -123,7 +123,7 @@ def sso_login(request: Request):
     sep = "&" if "?" in doc["authorization_endpoint"] else "?"
     resp = RedirectResponse(doc["authorization_endpoint"] + sep + urlencode(params), status_code=302)
     resp.set_cookie(_FLOW_COOKIE, f"{state}:{verifier}", max_age=_FLOW_TTL,
-                    httponly=True, samesite="lax", path="/auth/sso")
+                    httponly=True, samesite="lax", path="/api/v1/auth/sso")
     return resp
 
 
@@ -141,5 +141,5 @@ def sso_callback(request: Request, code: str = "", state: str = ""):
         return JSONResponse(status_code=exc.status_code, content={
             "code": exc.code, "message": exc.message, "details": exc.details or {}})
     resp = RedirectResponse(f"/#auth={tokens.get('access_token', '')}", status_code=302)
-    resp.delete_cookie(_FLOW_COOKIE, path="/auth/sso")
+    resp.delete_cookie(_FLOW_COOKIE, path="/api/v1/auth/sso")
     return resp

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Date, ForeignKeyConstraint, Index, String, UniqueConstraint
+from sqlalchemy import JSON, Date, ForeignKeyConstraint, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.common.db import Base, IdMixin, TimestampMixin
@@ -52,3 +52,4 @@ class ReferenceItem(Base, IdMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)  # active|retired
     valid_from: Mapped[str | None] = mapped_column(Date, nullable=True)   # رشته تاریخ ذخیره می‌شود
     valid_to: Mapped[str | None] = mapped_column(Date, nullable=True)
+    attrs: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # ویژگی‌های اختیاری آیتم (مثلاً واحد/سال/پیش‌نیاز درس)

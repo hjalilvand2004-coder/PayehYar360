@@ -32,6 +32,7 @@ class ItemCreate(BaseModel):
     sort_order: int = 0
     valid_from: str | None = None
     valid_to: str | None = None
+    attrs: dict | None = None  # ویژگی‌های اختیاری (مثلاً واحد/سال/پیش‌نیاز درس)
 
 
 class ItemPatch(BaseModel):
@@ -41,6 +42,7 @@ class ItemPatch(BaseModel):
     status: str | None = None  # active | retired
     valid_from: str | None = None
     valid_to: str | None = None
+    attrs: dict | None = None
 
 
 @router.get("")

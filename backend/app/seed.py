@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,6 +22,7 @@ from app.modules.integrations.service import create_installation, create_tenant
 from app.modules.persons.models import PersonIdentifier
 from app.modules.persons.service import add_contact, add_identifier, create_person
 from app.modules.references.service import create_item, create_set
+from app.seed_courses import COURSE_SECTIONS, UNIQUE_COURSES
 
 log = logging.getLogger("core.seed")
 
@@ -199,6 +201,37 @@ def seed_demo(db: Session) -> None:
             create_item(db, tenant.id, actor, code, {
                 "code": item_code, "title": item_title, "sort_order": sort,
             })
+
+    # ---- درس‌های یکتا — دیتای واقعی سامانه نظرسنجی دروس ۳۶۰ (پورت 8082، صفحه admin/unique-courses) ----
+    create_set(db, tenant.id, actor, {
+        "code": "course_sections", "title": "گروه‌های درس",
+        "description": "گروه‌های دروس یکتا — منبع: سامانه نظرسنجی دروس ۳۶۰ (8082)",
+    })
+    for sort, (scode, slabel, scount) in enumerate(COURSE_SECTIONS):
+        create_item(db, tenant.id, actor, "course_sections", {
+            "code": scode, "title": slabel, "sort_order": sort,
+            "attrs": {"course_count": scount},
+        })
+
+    create_set(db, tenant.id, actor, {
+        "code": "unique_courses", "title": "درس‌های یکتا",
+        "description": "۱۴۳ درس واقعی واردشده از سامانه نظرسنجی دروس ۳۶۰ (8082) — گروه‌بندی درختی؛ واحد/سال/پیش‌نیاز در attrs",
+    })
+    section_item_ids = {}
+    for scode, slabel, _ in COURSE_SECTIONS:
+        sec_item = create_item(db, tenant.id, actor, "unique_courses", {
+            "code": f"SEC-{scode}", "title": slabel, "sort_order": 0,
+        })
+        section_item_ids[scode] = sec_item["id"]
+    for cid, ctitle, credits, year, section, prerequisite in UNIQUE_COURSES:
+        attrs = {"credits": credits, "year": year, "source": "survey-8082", "source_id": cid}
+        if prerequisite and prerequisite != "-":
+            attrs["prerequisite"] = prerequisite
+        parent = section_item_ids.get(section)
+        create_item(db, tenant.id, actor, "unique_courses", {
+            "code": f"UC-{cid}", "title": ctitle, "sort_order": cid,
+            "parent_id": uuid.UUID(parent) if parent else None, "attrs": attrs,
+        })
 
     edu = installs.get("amoozeshyar") or installs.get("payehyar")
     for given, family, idents, contacts in DEMO_PERSONS:

@@ -145,6 +145,18 @@ def extract_tenants(claims: dict) -> list[str]:
     return [str(v) for v in vals if str(v)]
 
 
+def map_ecosystem_roles(raw_roles: set[str]) -> set[str]:
+    """نگاشت نقش‌های سامانه‌ای اکوسیستم به نقش‌های هسته (قرارداد پرتال دانشجویار۳۶۰)."""
+    mapped: set[str] = set()
+    for r in raw_roles:
+        if r == "sysadmin":
+            mapped |= {"tenant_admin", "integration_admin"}
+        elif r.endswith(".admin"):
+            # مثل payeh360.admin / hr.admin → مدیر مشتری
+            mapped.add("tenant_admin")
+    return mapped
+
+
 def build_actor_from_claims(claims: dict) -> Actor:
     kind = "service" if claims.get("actor_type") == "service" or claims.get("token_type") == "service" else "user"
     subject = str(claims.get("sub") or "")
@@ -163,6 +175,8 @@ def build_actor_from_claims(claims: dict) -> Actor:
             scopes.add("*")
     roles = extract_roles(claims)
     tenant_codes = extract_tenants(claims)
+    # نگاشت نقش‌های اکوسیستم (sysadmin، <client>.admin) به نقش‌های هسته — «ورود با نقش مربوطه»
+    roles = roles | map_ecosystem_roles(extract_raw_roles(claims))
     # کاربر سازمانی با نقش دسترسی اکوسیستم: حداقل مشاهده‌گر + مشتری پیش‌فرض پایلوت
     if kind == "user" and has_sso_access(claims):
         roles = roles | {"viewer"}

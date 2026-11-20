@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { useAuth } from './auth/AuthContext'
 import DevLogin from './auth/DevLogin'
 import OidcCallback from './auth/OidcCallback'
@@ -27,6 +28,70 @@ const NAV = [
   { to: '/audit', label: 'ممیزی', icon: '🗂' },
 ]
 
+/** صفحه لاگین محلی — فقط به‌عنوان فال‌بک در مسیر /login در دسترس است. */
+function LocalLoginPage() {
+  const { meta } = useAuth()
+  const [ssoError, setSsoError] = useState('')
+  useEffect(() => {
+    const p = new URLSearchParams(location.search)
+    if (p.get('sso_error')) setSsoError('جریان ورود یکپارچه ناموفق بود (state نامعتبر). دوباره تلاش کنید.')
+  }, [])
+  return (
+    <div className="login-wrap">
+      <div className="login-card">
+        <div className="login-logo">۳۶۰</div>
+        <h1>پایه‌یار۳۶۰ — هسته مشترک</h1>
+        <p className="muted">
+          ورود یکپارچه از طریق پرتال سازمان (دانشجویار۳۶۰) انجام می‌شود؛ هویت و نقش‌ها از SSO خوانده می‌شود.
+        </p>
+        {ssoError && <div className="alert error">{ssoError}</div>}
+        <a className="btn primary block" href="/api/v1/auth/sso/login" style={{ textAlign: 'center', textDecoration: 'none', display: 'block' }}>
+          ورود یک‌کلیکی با حساب سازمانی
+        </a>
+        <div className="sso-divider">یا جریان امن PKCE</div>
+        <button
+          className="btn block"
+          onClick={() =>
+            import('./auth/OidcCallback').then((m) =>
+              m.startOidcLogin(meta!.oidc.authorization_endpoint!, meta!.oidc.client_id!),
+            )
+          }
+        >
+          ورود با Authorization Code + PKCE
+        </button>
+        {meta?.oidc.client_id === null && (
+          <p className="alert error">OIDC_CLIENT_ID روی بک‌اند تنظیم نشده است؛ با مدیر یکپارچگی هماهنگ کنید.</p>
+        )}
+        <div className="login-note">
+          🔐 <span>Client: <b>{meta?.oidc.client_id}</b> — نقش دسترسی: <b>hr.access</b></span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** انتقال مستقیم به SSO — بدون صفحه لاگین محلی (کاربر فقط در IdP احراز می‌شود). */
+function SsoRedirect() {
+  useEffect(() => {
+    // تأخیر کوتاه: اگر توکن بازگشتی در hash باشد، AuthContext آن را می‌گیرد و نیاز به redirect نیست
+    const t = setTimeout(() => { window.location.assign('/api/v1/auth/sso/login') }, 500)
+    return () => clearTimeout(t)
+  }, [])
+  return (
+    <div className="login-wrap">
+      <div className="login-card" style={{ textAlign: 'center' }}>
+        <div className="login-logo">۳۶۰</div>
+        <h1>ورود یکپارچه سازمانی</h1>
+        <p className="muted">در حال انتقال به پرتال ورود یکپارچه دانشجویار۳۶۰ …</p>
+        <a className="btn block" href="/api/v1/auth/sso/login">اگر انتقال خودکار انجام نشد، اینجا کلیک کنید</a>
+        <div className="login-note">
+          <span>ورود مستقیم محلی؟ <a href="/login">صفحه لاگین محلی</a></span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const { meta, me, auth, ready, logout } = useAuth()
   const navigate = useNavigate()
@@ -35,42 +100,15 @@ export default function App() {
     return <div className="page-loading">در حال اتصال به هسته …</div>
   }
 
-  if (meta?.dev_mode && !auth) {
-    return <DevLogin />
+  // بازگشت جریان PKCE فرانت — حتی بدون احراز باید رندر شود
+  if (!auth && location.pathname === '/login/callback') {
+    return <OidcCallback />
   }
 
-  if (!meta?.dev_mode && !auth && meta?.oidc.available) {
-    return (
-      <div className="login-wrap">
-        <div className="login-card">
-          <div className="login-logo">۳۶۰</div>
-          <h1>پایه‌یار۳۶۰ — هسته مشترک</h1>
-          <p className="muted">
-            ورود از طریق پرتال یکپارچه سازمان (دانشجویار۳۶۰) انجام می‌شود؛ هویت و نقش‌ها از SSO خوانده می‌شود.
-          </p>
-          <a className="btn primary block" href="/auth/sso/login" style={{ textAlign: 'center', textDecoration: 'none', display: 'block' }}>
-            ورود یک‌کلیکی با حساب سازمانی
-          </a>
-          <div className="sso-divider">یا جریان امن PKCE</div>
-          <button
-            className="btn block"
-            onClick={() =>
-              import('./auth/OidcCallback').then((m) =>
-                m.startOidcLogin(meta.oidc.authorization_endpoint!, meta.oidc.client_id!),
-              )
-            }
-          >
-            ورود با Authorization Code + PKCE
-          </button>
-          {meta.oidc.client_id === null && (
-            <p className="alert error">OIDC_CLIENT_ID روی بک‌اند تنظیم نشده است؛ با مدیر یکپارچگی هماهنگ کنید.</p>
-          )}
-          <div className="login-note">
-            🔐 <span>Client: <b>{meta.oidc.client_id}</b> — نقش دسترسی: <b>hr.access</b></span>
-          </div>
-        </div>
-      </div>
-    )
+  if (!auth && meta?.oidc.available) {
+    // صفحه لاگین محلی فقط در مسیر /login (فال‌بک)؛ در بقیه مسیرها انتقال مستقیم به SSO
+    if (location.pathname === '/login') return <LocalLoginPage />
+    if (!meta?.dev_mode) return <SsoRedirect />
   }
 
   if (!auth) {
@@ -96,7 +134,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-foot muted small">
-          نسخه ۱.۰.۱ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
+          نسخه ۱.۰.۲ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
         </div>
       </aside>
       <div className="main">
