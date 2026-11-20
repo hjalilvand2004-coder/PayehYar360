@@ -215,8 +215,9 @@ def seed_demo(db: Session) -> None:
 
     create_set(db, tenant.id, actor, {
         "code": "unique_courses", "title": "درس‌های یکتا",
-        "description": "۱۴۳ درس واقعی واردشده از سامانه نظرسنجی دروس ۳۶۰ (8082) — گروه‌بندی درختی؛ "
-                       "واحد نظری/عملی، سال، پیش‌نیازهای لینک‌شده به کد درس و ردیف گروهی در attrs",
+        "description": "۱۴۳ درس واقعی واردشده از سامانه نظرسنجی دروس ۳۶۰ (8082) — فیلدها: کد یکتا، عنوان، "
+                       "گروه، ظرفیت برآوردی (در منبع عمومی نیست؛ از پنل قابل ثبت)، واحد نظری/عملی، وضعیت "
+                       "+ سال، پیش‌نیازهای لینک‌شده به کد درس و ردیف گروهی در attrs",
     })
     section_item_ids = {}
     for s in COURSE_SECTIONS:
@@ -226,8 +227,11 @@ def seed_demo(db: Session) -> None:
         section_item_ids[s["code"]] = sec_item["id"]
     for c in UNIQUE_COURSES:
         attrs = {
+            "unique_code": c["unique_code"], "group": c["group"],
+            "estimated_capacity": c["estimated_capacity"],
             "credits": c["credits"], "credits_theory": c["credits_theory"],
             "credits_practical": c["credits_practical"],
+            "status": c["status"],
             "year": c["year"], "year_raw": c["year_raw"],
             "section": c["section"], "group_order": c["group_order"],
             "prerequisite": c["prerequisite"], "prerequisites": c["prereq_codes"],

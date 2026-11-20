@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PayehYar360 — Shared Core & Master Data",
     description="هسته مشترک و اطلاعات پایه پلتفرم دانشجو۳۶۰ (پایه‌یار۳۶۰) — شرکت ماه‌افزار هوشمند رسا",
-    version="1.0.3",
+    version="1.0.4",
     lifespan=lifespan,
     docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json",
 )
@@ -179,7 +179,7 @@ def meta():
     from app.messaging import rabbitmq
     out = {
         "app": "payehyar360-shared-core",
-        "version": "1.0.3",
+        "version": "1.0.4",
         "env": s.ENV,
         "auth_mode": "dev" if s.DEV_AUTH else "oidc",
         "dev_mode": s.DEV_AUTH,

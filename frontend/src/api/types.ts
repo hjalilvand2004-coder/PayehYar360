@@ -86,6 +86,7 @@ export interface RefItem {
   status: string
   valid_from: string | null
   valid_to: string | null
+  attrs: Record<string, unknown> | null
 }
 
 export interface OwnershipPolicy {

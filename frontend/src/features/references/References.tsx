@@ -10,6 +10,7 @@ export default function References() {
   const { me } = useAuth()
   const canEdit = (me?.roles || []).some((r) => ['master_data_editor', 'steward', 'tenant_admin'].includes(r))
   const [selected, setSelected] = useState<string>('')
+  const [groupFilter, setGroupFilter] = useState('')
   const [modal, setModal] = useState<{ kind: 'set' | 'item' | 'editItem'; item?: RefItem } | null>(null)
   const [error, setError] = useState('')
 
@@ -28,6 +29,22 @@ export default function References() {
     fn().then(() => { setError(''); setModal(null); invalidate() }).catch((e) => setError((e as ApiError).message))
 
   const activeSet = sets.data?.items.find((s) => s.code === selected)
+
+  // نمای اختصاصی «درس‌های یکتا»: سرگروه‌های SEC-* ستون «گروه» می‌شوند و جدول ۷ ستونه دارد
+  const isCourses = selected === 'unique_courses'
+  const allItems = items.data?.items || []
+  const groupRows = allItems.filter((i) => i.code.startsWith('SEC-'))
+  const groupRank = new Map(groupRows.map((g, idx) => [g.title, idx]))
+  const courseRows = allItems
+    .filter((i) => !i.code.startsWith('SEC-'))
+    .filter((i) => !groupFilter || ((i.attrs || {}) as Record<string, any>).group === groupFilter)
+    .sort((x, y) => {
+      const ax = (x.attrs || {}) as Record<string, any>
+      const ay = (y.attrs || {}) as Record<string, any>
+      const gx = groupRank.get(ax.group) ?? 99
+      const gy = groupRank.get(ay.group) ?? 99
+      return gx - gy || (ax.group_order ?? 0) - (ay.group_order ?? 0)
+    })
 
   return (
     <>
@@ -65,7 +82,45 @@ export default function References() {
           </h2>
           {!selected ? <Empty text="برای مشاهده آیتم‌ها یک مجموعه انتخاب کنید" /> : (
             <>
-              {items.isLoading ? <Loading /> : (
+              {items.isLoading ? <Loading /> : isCourses ? (
+                <>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                    <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}>
+                      <option value="">همه گروه‌ها</option>
+                      {groupRows.map((g) => <option key={g.id} value={g.title}>{g.title}</option>)}
+                    </select>
+                    <span className="muted small">{courseRows.length} درس از {allItems.length - groupRows.length}</span>
+                  </div>
+                  <div className="table-wrap">
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>کد یکتا</th><th>عنوان درس</th><th>گروه</th><th>ظرفیت برآوردی</th>
+                          <th>تعداد واحد نظری</th><th>تعداد واحد عملی</th><th>وضعیت</th><th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {courseRows.map((i) => {
+                          const a = (i.attrs || {}) as Record<string, any>
+                          return (
+                            <tr key={i.id}>
+                              <td className="num">{a.unique_code || i.code}</td>
+                              <td>{i.title}</td>
+                              <td>{a.group || '—'}</td>
+                              <td className="num">{a.estimated_capacity ?? '—'}</td>
+                              <td className="num">{a.credits_theory ?? '—'}</td>
+                              <td className="num">{a.credits_practical ?? '—'}</td>
+                              <td><span className="chip">{a.status || i.status}</span></td>
+                              <td>{canEdit && <button className="btn sm ghost" onClick={() => setModal({ kind: 'editItem', item: i })}>اصلاح</button>}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    {courseRows.length === 0 && <Empty />}
+                  </div>
+                </>
+              ) : (
                 <div className="table-wrap">
                   <table className="tbl">
                     <thead><tr><th>کد</th><th>عنوان</th><th>ترتیب</th><th>اعتبار</th><th>وضعیت</th><th></th></tr></thead>
@@ -109,10 +164,28 @@ export default function References() {
       )}
       {modal?.kind === 'editItem' && modal.item && (
         <SimpleModal title={`اصلاح آیتم «${modal.item.code}»`} onClose={() => setModal(null)}
-          onSubmit={(v) => run(() => api(`/api/v1/reference-sets/${selected}/items/${modal.item!.id}`, { method: 'PATCH', body: v }))}
+          onSubmit={(v) => {
+            // در درس‌های یکتا، ظرفیت برآوردی داخل attrs ذخیره می‌شود (PATCH کل attrs را جایگزین می‌کند)
+            let body: Record<string, unknown> = v
+            if (isCourses) {
+              const { estimated_capacity: cap, ...rest } = v as Record<string, unknown>
+              body = {
+                ...rest,
+                attrs: {
+                  ...(modal.item!.attrs || {}),
+                  estimated_capacity: cap === undefined || cap === '' ? null : Number(cap),
+                },
+              }
+            }
+            return run(() => api(`/api/v1/reference-sets/${selected}/items/${modal.item!.id}`, { method: 'PATCH', body }))
+          }}
           fields={[
             { name: 'title', label: 'عنوان', initial: modal.item.title },
             { name: 'valid_to', label: 'اعتبار تا (YYYY-MM-DD، خالی = بدون پایان)', dir: 'ltr' },
+            ...(isCourses ? [{
+              name: 'estimated_capacity', label: 'ظرفیت برآوردی (خالی = نامشخص)', type: 'number',
+              initial: String(((modal.item.attrs || {}) as Record<string, any>).estimated_capacity ?? ''),
+            }] : []),
           ]}
           extraStatusSelect={(v) => run(() => api(`/api/v1/reference-sets/${selected}/items/${modal.item!.id}`, { method: 'PATCH', body: { status: v } }))} />
       )}
