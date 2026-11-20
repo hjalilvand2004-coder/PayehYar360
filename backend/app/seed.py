@@ -207,29 +207,39 @@ def seed_demo(db: Session) -> None:
         "code": "course_sections", "title": "گروه‌های درس",
         "description": "گروه‌های دروس یکتا — منبع: سامانه نظرسنجی دروس ۳۶۰ (8082)",
     })
-    for sort, (scode, slabel, scount) in enumerate(COURSE_SECTIONS):
+    for s in COURSE_SECTIONS:
         create_item(db, tenant.id, actor, "course_sections", {
-            "code": scode, "title": slabel, "sort_order": sort,
-            "attrs": {"course_count": scount},
+            "code": s["code"], "title": s["title"], "sort_order": s["order"],
+            "attrs": {"course_count": s["count"], "order": s["order"]},
         })
 
     create_set(db, tenant.id, actor, {
         "code": "unique_courses", "title": "درس‌های یکتا",
-        "description": "۱۴۳ درس واقعی واردشده از سامانه نظرسنجی دروس ۳۶۰ (8082) — گروه‌بندی درختی؛ واحد/سال/پیش‌نیاز در attrs",
+        "description": "۱۴۳ درس واقعی واردشده از سامانه نظرسنجی دروس ۳۶۰ (8082) — گروه‌بندی درختی؛ "
+                       "واحد نظری/عملی، سال، پیش‌نیازهای لینک‌شده به کد درس و ردیف گروهی در attrs",
     })
     section_item_ids = {}
-    for scode, slabel, _ in COURSE_SECTIONS:
+    for s in COURSE_SECTIONS:
         sec_item = create_item(db, tenant.id, actor, "unique_courses", {
-            "code": f"SEC-{scode}", "title": slabel, "sort_order": 0,
+            "code": f"SEC-{s['code']}", "title": s["title"], "sort_order": s["order"],
         })
-        section_item_ids[scode] = sec_item["id"]
-    for cid, ctitle, credits, year, section, prerequisite in UNIQUE_COURSES:
-        attrs = {"credits": credits, "year": year, "source": "survey-8082", "source_id": cid}
-        if prerequisite and prerequisite != "-":
-            attrs["prerequisite"] = prerequisite
-        parent = section_item_ids.get(section)
+        section_item_ids[s["code"]] = sec_item["id"]
+    for c in UNIQUE_COURSES:
+        attrs = {
+            "credits": c["credits"], "credits_theory": c["credits_theory"],
+            "credits_practical": c["credits_practical"],
+            "year": c["year"], "year_raw": c["year_raw"],
+            "section": c["section"], "group_order": c["group_order"],
+            "prerequisite": c["prerequisite"], "prerequisites": c["prereq_codes"],
+            "source": "survey-8082", "source_id": c["id"],
+        }
+        if c.get("year_note"):
+            attrs["year_note"] = c["year_note"]
+        if c["prereq_unresolved"]:
+            attrs["prerequisite_unresolved"] = c["prereq_unresolved"]
+        parent = section_item_ids.get(c["section"])
         create_item(db, tenant.id, actor, "unique_courses", {
-            "code": f"UC-{cid}", "title": ctitle, "sort_order": cid,
+            "code": f"UC-{c['id']}", "title": c["title"], "sort_order": c["group_order"],
             "parent_id": uuid.UUID(parent) if parent else None, "attrs": attrs,
         })
 
