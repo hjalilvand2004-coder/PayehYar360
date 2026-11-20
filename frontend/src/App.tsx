@@ -44,21 +44,30 @@ export default function App() {
       <div className="login-wrap">
         <div className="login-card">
           <div className="login-logo">۳۶۰</div>
-          <h1>هسته مشترک دانشجو۳۶۰</h1>
-          <p className="muted">ورود از طریق پرتال یکپارچه SSO سازمان انجام می‌شود.</p>
+          <h1>پایه‌یار۳۶۰ — هسته مشترک</h1>
+          <p className="muted">
+            ورود از طریق پرتال یکپارچه سازمان (دانشجویار۳۶۰) انجام می‌شود؛ هویت و نقش‌ها از SSO خوانده می‌شود.
+          </p>
+          <a className="btn primary block" href="/auth/sso/login" style={{ textAlign: 'center', textDecoration: 'none', display: 'block' }}>
+            ورود یک‌کلیکی با حساب سازمانی
+          </a>
+          <div className="sso-divider">یا جریان امن PKCE</div>
           <button
-            className="btn primary block"
+            className="btn block"
             onClick={() =>
               import('./auth/OidcCallback').then((m) =>
                 m.startOidcLogin(meta.oidc.authorization_endpoint!, meta.oidc.client_id!),
               )
             }
           >
-            ورود با SSO سازمانی
+            ورود با Authorization Code + PKCE
           </button>
           {meta.oidc.client_id === null && (
             <p className="alert error">OIDC_CLIENT_ID روی بک‌اند تنظیم نشده است؛ با مدیر یکپارچگی هماهنگ کنید.</p>
           )}
+          <div className="login-note">
+            🔐 <span>Client: <b>{meta.oidc.client_id}</b> — نقش دسترسی: <b>hr.access</b></span>
+          </div>
         </div>
       </div>
     )
@@ -74,8 +83,8 @@ export default function App() {
         <div className="brand">
           <span className="brand-badge">۳۶۰</span>
           <div>
-            <div className="brand-title">هسته مشترک</div>
-            <div className="brand-sub muted">Shared Core</div>
+            <div className="brand-title">پایه‌یار۳۶۰</div>
+            <div className="brand-sub">هسته مشترک و اطلاعات پایه</div>
           </div>
         </div>
         <nav>
@@ -87,13 +96,13 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-foot muted small">
-          نسخه ۱.۰.۰ — ماه‌افزار هوشمند رسا
+          نسخه ۱.۰.۱ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
         </div>
       </aside>
       <div className="main">
         <header className="topbar">
           <div className="muted small">
-            {meta?.dev_mode ? 'حالت توسعه (هویت آزمایشی)' : `SSO: ${meta?.oidc.issuer}`}
+            {meta?.dev_mode ? 'حالت توسعه (هویت آزمایشی)' : `ورود یکپارچه: ${meta?.oidc.issuer?.replace(/^https?:\/\//, '')}`}
           </div>
           <div className="topbar-user">
             {auth.tenant && <span className="chip">{auth.tenant}</span>}

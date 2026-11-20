@@ -41,6 +41,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => setMeta(null))
   }, [])
 
+  // بازگشت از جریان سراسری سرور (/auth/sso/callback → /#auth=<token>)
+  useEffect(() => {
+    if (!location.hash) return
+    const m = location.hash.match(/(?:^|&)auth=([^&]+)/)
+    if (m?.[1]) {
+      try {
+        const token = decodeURIComponent(m[1])
+        const claims = decodeJwtPayload(token)
+        const tenantClaim = claims?.tenant
+        const tenants = (claims?.tenants as string[]) || (typeof tenantClaim === 'string' && tenantClaim ? [tenantClaim] : [])
+        const next: AuthState = { mode: 'oidc', token, tenant: tenants[0] }
+        saveAuth(next)
+        setAuth(next)
+      } catch {
+        // توکن ناقص — نادیده گرفته می‌شود
+      }
+      history.replaceState(null, '', location.pathname + location.search)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     if (meta === null) return
     const current = loadAuth()

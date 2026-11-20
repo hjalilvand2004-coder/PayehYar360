@@ -5,6 +5,19 @@ import { ErrorBox, Loading, PageHead, StatusBadge } from '../../components/ui'
 import { fmtNumber, fmtSeconds } from '../../shared/format'
 import { useAuth } from '../../auth/AuthContext'
 
+// اکوسیستم دانشجو۳۶۰ — پورت‌های واقعی روی 188.212.96.235 (مطابق نصب‌های ثبت‌شده در هسته)
+const ECOSYSTEM = [
+  { name: 'پرتال ورود یکپارچه', port: 8086, key: 'SSO' },
+  { name: 'نظرسنجی دروس', port: 8082, key: 'survey' },
+  { name: 'برنامه‌ریزی درسی', port: 8083, key: 'barnamehyar' },
+  { name: 'مدیریار۳۶۰', port: 8087, key: 'modiriyar' },
+  { name: 'پژوهشیار۳۶۰', port: 8088, key: 'pajooheshyar' },
+  { name: 'باشگاه۳۶۰', port: 8089, key: 'bashgah' },
+  { name: 'مهارت‌یار۳۶۰', port: 8090, key: 'maharatyar' },
+  { name: 'آموزش‌یار۳۶۰', port: 8091, key: 'amoozeshyar' },
+  { name: 'پایه‌یار۳۶۰ (خود)', port: 8094, key: 'payehyar' },
+]
+
 export default function Dashboard() {
   const { auth } = useAuth()
   const stats = useQuery({ queryKey: ['stats'], queryFn: () => api<Stats>('/api/v1/stats') })
@@ -64,6 +77,22 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="card">
+        <h2>اکوسیستم دانشجو۳۶۰ — سامانه‌های متصل</h2>
+        <div className="eco-strip">
+          {ECOSYSTEM.map((s) => (
+            <div key={s.port} className="eco-item">
+              <span className="dot" />
+              <span className="t">{s.name}</span>
+              <span className="p">:{s.port}</span>
+            </div>
+          ))}
+        </div>
+        <p className="muted small">
+          همه سامانه‌ها با احراز یکپارچه SSO (issuer مشترک) و همگام‌سازی رویدادمحور از طریق همین هسته متصل می‌شوند.
+        </p>
       </div>
 
       <div className="grid cols-2">

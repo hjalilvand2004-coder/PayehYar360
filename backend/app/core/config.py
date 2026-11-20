@@ -20,12 +20,18 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 20
 
     # --- SSO / OIDC ---
-    # issuer واقعی SSO موجود سازمان (Keycloak-سازگار)
+    # issuer واقعی SSO موجود سازمان (پرتال ورود یکپارچه دانشجویار۳۶۰ — Keycloak-سازگار)
+    # ثبت سامانه در پرتال: appKey=hr، Client ID=payeh360، ورود OIDC=http://188.212.96.235:8094/
     OIDC_ISSUER: str = "http://188.212.96.235:8086"
+    OIDC_CLIENT_ID: str = "payeh360"  # client ثبت‌شده در پرتال (Authorization Code + PKCE)
     OIDC_AUDIENCE: str = ""  # اگر خالی باشد بررسی aud انجام نمی‌شود
-    OIDC_CLIENT_ID: str = ""  # client عمومی فرانت برای Authorization Code + PKCE
     OIDC_CLIENT_SECRET: str = ""  # فقط اگر SSO روش محرمانه لازم داشته باشد؛ از مخزن امن تزریق شود
     OIDC_HTTP_TIMEOUT: float = 6.0
+    OIDC_PUBLIC_BASE_URL: str = ""  # اگر سامانه پشت پروکسی است، ریشه عمومی (مثلاً http://188.212.96.235:8094)
+    # نقش دسترسی سازمانی در SSO — قرارداد اکوسیستم: <appKey>.access
+    SSO_ACCESS_ROLE: str = "hr.access"
+    # مشتری پیش‌فرض برای کاربران SSO که claim مشتری ندارند (حالت پایلوت)
+    SSO_DEFAULT_TENANT: str = "demo"
     # حالت توسعه: پذیرش هدرهای X-Dev-* به‌جای توکن واقعی — فقط در dev/test
     DEV_AUTH: bool = False
 

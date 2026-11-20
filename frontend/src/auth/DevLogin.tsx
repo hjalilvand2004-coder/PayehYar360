@@ -50,8 +50,8 @@ export default function DevLogin() {
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
         <div className="login-logo">۳۶۰</div>
-        <h1>هسته مشترک دانشجو۳۶۰</h1>
-        <p className="muted">ورود آزمایشی — فقط در محیط توسعه؛ در محیط واقعی ورود از پرتال یکپارچه SSO انجام می‌شود.</p>
+        <h1>پایه‌یار۳۶۰ — هسته مشترک</h1>
+        <p className="muted">ورود آزمایشی — فقط در محیط توسعه؛ در محیط واقعی ورود از پرتال یکپارچه (دانشجویار۳۶۰) انجام می‌شود.</p>
         {error && <div className="alert error">{error}</div>}
         <label>شناسه کاربر</label>
         <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="steward1" />

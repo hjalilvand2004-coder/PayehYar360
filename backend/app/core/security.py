@@ -110,7 +110,8 @@ def validate_oidc_token(token: str) -> dict:
     return claims
 
 
-def extract_roles(claims: dict) -> set[str]:
+def extract_raw_roles(claims: dict) -> set[str]:
+    """همه نقش‌های قابل استخراج از توکن — بدون فیلتر (شامل نقش‌های سامانه‌ای مثل hr.access)."""
     roles: set[str] = set()
     for source in (claims.get("core_roles"), claims.get("roles"),
                    (claims.get("realm_access") or {}).get("roles")):
@@ -121,7 +122,18 @@ def extract_roles(claims: dict) -> set[str]:
         for client_cfg in resource.values():
             if isinstance(client_cfg, dict) and isinstance(client_cfg.get("roles"), list):
                 roles.update(r for r in client_cfg["roles"] if isinstance(r, str))
-    return roles & set(KNOWN_ROLES)
+    return roles
+
+
+def extract_roles(claims: dict) -> set[str]:
+    return extract_raw_roles(claims) & set(KNOWN_ROLES)
+
+
+def has_sso_access(claims: dict) -> bool:
+    """آیا توکن نقش دسترسی سازمانی اکوسیستم را دارد؟ (قرارداد: <appKey>.access)"""
+    raw = extract_raw_roles(claims)
+    aliases = {settings.SSO_ACCESS_ROLE, "hr.access", "payeh360.access", "payehyar.access"}
+    return bool(raw & aliases)
 
 
 def extract_tenants(claims: dict) -> list[str]:
@@ -149,13 +161,20 @@ def build_actor_from_claims(claims: dict) -> Actor:
                 scopes.add(f"{head}:{ent}")
         elif s == "*":
             scopes.add("*")
+    roles = extract_roles(claims)
+    tenant_codes = extract_tenants(claims)
+    # کاربر سازمانی با نقش دسترسی اکوسیستم: حداقل مشاهده‌گر + مشتری پیش‌فرض پایلوت
+    if kind == "user" and has_sso_access(claims):
+        roles = roles | {"viewer"}
+        if not tenant_codes and settings.SSO_DEFAULT_TENANT:
+            tenant_codes = [settings.SSO_DEFAULT_TENANT]
     return Actor(
         kind=kind,
         subject=subject,
         name=str(claims.get("name") or claims.get("preferred_username") or claims.get("client_id") or subject),
-        roles=extract_roles(claims),
+        roles=roles,
         scopes=scopes,
-        tenant_codes=extract_tenants(claims),
+        tenant_codes=tenant_codes,
         issuer=str(claims.get("iss") or ""),
         client_id=str(claims.get("client_id") or claims.get("azp") or ""),
         claims=claims,
