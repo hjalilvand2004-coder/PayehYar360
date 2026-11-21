@@ -134,7 +134,7 @@ def sso_callback(request: Request, code: str = "", state: str = ""):
     expected_state, _, verifier = raw.partition(":")
     if not code or not expected_state or not verifier or state != expected_state:
         return RedirectResponse("/?sso_error=state", status_code=302)
-    redirect_uri = f"{_public_base(request)}/auth/sso/callback"
+    redirect_uri = f"{_public_base(request)}/api/v1/auth/sso/callback"
     try:
         tokens = _exchange_code(code, verifier, redirect_uri)
     except AppError as exc:

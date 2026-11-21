@@ -17,6 +17,25 @@ curl http://188.212.96.235:8094/health/ready
 
 سرویس‌ها: `core-api` (Migration خودکار پیش از راه‌اندازی)، `core-frontend` (nginx → پورت منتشرشده **8094**)، `core-outbox-worker`، `core-job-worker`، `postgresql`، `rabbitmq`. دیتابیس و RabbitMQ فقط روی شبکه داخلی compose منتشر می‌شوند.
 
+### ۱.۱. باز کردن پورت 8094 در جدار آتش (پیش‌نیاز دسترسی از شبکه)
+```bash
+# Linux (RHEL/CentOS):
+sudo firewall-cmd --permanent --add-port=8094/tcp && sudo firewall-cmd --reload
+# Linux (Ubuntu/Debian):
+sudo ufw allow 8094/tcp
+```
+```bat
+:: Windows Server (CMD با دسترسی admin):
+netsh advfirewall firewall add rule name="PayehYar360" dir=in action=allow protocol=TCP localport=8094
+```
+
+### ۱.۲. استقرار سریع با بسته پرتیبل (بدون Docker)
+- Linux: استخراج `PayehYar360-Portable-Linux-v1.0.8.zip` → پس از باز کردن پورت در فایروال:
+  `DEV_AUTH=false OIDC_PUBLIC_BASE_URL=http://188.212.96.235:8094 ALLOWED_ORIGINS=http://188.212.96.235:8094 ./payehyar360-server`
+- Windows: استخراج `PayehYar360-Portable-Windows-v1.0.8.zip` → ویرایش همین متغیرها در `start.bat` → اجرای `start.bat`
+- پیش‌فرض پرتیبل (بدون این متغیرها): SQLite + داده نمونه + ورود آزمایشی (`DEV_AUTH=true`) — مناسب پایلوت.
+- redirect URI کلاینت `payeh360` در پرتال SSO باید دقیقاً `http://188.212.96.235:8094/api/v1/auth/sso/callback` باشد (v1.0.8 این مسیر را در تبادل توکن اصلاح کرده است).
+
 محیط‌ها: توسعه (Compose/SQLite + DEV_AUTH)، آزمون یکپارچگی، پیش‌تولید، تولید. Kubernetes فقط در صورت نیاز عملیاتی و زیرساخت آماده.
 
 ## ۲. الزامات عملیاتی (بند ۱۴.۳) — وضعیت

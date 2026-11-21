@@ -33,7 +33,7 @@ def main() -> None:
     os.environ.setdefault("SEED_DEMO", "true")
     os.environ.setdefault("WORKERS_IN_PROCESS", "true")
     os.environ.setdefault("DEV_AUTH", "true")
-    os.environ.setdefault("ALLOWED_ORIGINS", "http://localhost:8094,http://127.0.0.1:8094")
+    os.environ.setdefault("ALLOWED_ORIGINS", "http://188.212.96.235:8094,http://localhost:8094,http://127.0.0.1:8094")
 
     dist = base / "frontend_dist"
     if dist.is_dir():
@@ -45,7 +45,7 @@ def main() -> None:
 
     port = int(os.environ["PORT"])
     print("=" * 56)
-    print("  PayehYar360 — Shared Core & Master Data (portable)")
+    print("  PayehYar360 — Shared Core & Master Data (portable v1.0.8)")
     print(f"  Panel & API:  http://localhost:{port}")
     print(f"  Swagger:      http://localhost:{port}/docs")
     print(f"  Data dir:     {data_dir}")
