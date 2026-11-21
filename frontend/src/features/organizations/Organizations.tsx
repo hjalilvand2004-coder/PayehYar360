@@ -115,8 +115,8 @@ function OrgForm({
       <select value={type} onChange={(e) => setType(e.target.value)} disabled={!!org}>
         {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>
-      <label>کد</label>
-      <input value={code} onChange={(e) => setCode(e.target.value)} disabled={!!org} dir="ltr" />
+      <label>کد (با احتیاط — سامانه‌های دیگر با همین کد به این واحد وصل‌اند)</label>
+      <input value={code} onChange={(e) => setCode(e.target.value)} dir="ltr" />
       <label>نام</label>
       <input value={name} onChange={(e) => setName(e.target.value)} />
       <label>والد</label>
@@ -128,9 +128,9 @@ function OrgForm({
         <button
           className="btn primary"
           onClick={() => onSubmit(org
-            // قرارداد PATCH سازمان فقط name/parent_id/sort_order را می‌پذیرد — type/code تغییرناپذیرند
-            // (ارسال فیلد اضافه با extra="forbid" به خطای 422 «ورودی ارسالی معتبر نیست» می‌رسید)
-            ? { name, parent_id: parentId || null, sort_order: org.sort_order ?? 0 }
+            // قرارداد PATCH سازمان: code/name/parent_id/sort_order — type در ویرایش تغییرناپذیر است
+            // (یکتایی کد در همان نوع، سمت سرور بررسی و در صورت تکرار با ORG_DUPLICATE رد می‌شود)
+            ? { code, name, parent_id: parentId || null, sort_order: org.sort_order ?? 0 }
             : { type, code, name, parent_id: parentId || null, sort_order: 0 })}
         >ذخیره</button>
         <button className="btn" onClick={onCancel}>انصراف</button>

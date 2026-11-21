@@ -1,13 +1,48 @@
-import { type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
+import { HELP, helpTopicForPath } from '../shared/helpContent'
 
 export function PageHead({ title, actions, subtitle }: { title: string; actions?: ReactNode; subtitle?: string }) {
+  // دکمه «؟ راهنما» در سربرگ همه صفحات — محتوای جامع همان بخش در مودال باز می‌شود
+  const topic = helpTopicForPath(useLocation().pathname)
+  const [helpOpen, setHelpOpen] = useState(false)
   return (
     <div className="page-head">
       <div>
         <h1>{title}</h1>
         {subtitle && <div className="muted small">{subtitle}</div>}
       </div>
-      <div className="actions">{actions}</div>
+      <div className="actions">
+        {topic && (
+          <button className="btn ghost sm" onClick={() => setHelpOpen(true)} title={`راهنمای ${HELP[topic].title}`}>
+            ؟ راهنما
+          </button>
+        )}
+        {actions}
+      </div>
+      {topic && helpOpen && (
+        <Modal title={`راهنما — ${HELP[topic].title}`} wide onClose={() => setHelpOpen(false)}>
+          <div style={{ maxHeight: '65vh', overflowY: 'auto', lineHeight: 1.9 }}>
+            <p style={{ marginTop: 0 }}>{HELP[topic].intro}</p>
+            {HELP[topic].sections.map((sec) => (
+              <div key={sec.h}>
+                <h3 style={{ margin: '14px 0 6px' }}>{sec.h}</h3>
+                <ul style={{ margin: 0, paddingInlineStart: 22 }}>
+                  {sec.items.map((it, idx) => <li key={idx} style={{ marginBottom: 4 }}>{it}</li>)}
+                </ul>
+              </div>
+            ))}
+            {HELP[topic].tips && HELP[topic].tips.length > 0 && (
+              <div className="alert info" style={{ marginTop: 14 }}>
+                <b>نکات:</b>
+                <ul style={{ margin: '6px 0 0', paddingInlineStart: 20 }}>
+                  {HELP[topic].tips.map((t, idx) => <li key={idx}>{t}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

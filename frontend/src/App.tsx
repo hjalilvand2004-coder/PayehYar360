@@ -134,7 +134,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-foot muted small">
-          نسخه ۱.۰.۵ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
+          نسخه ۱.۰.۶ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
         </div>
       </aside>
       <div className="main">

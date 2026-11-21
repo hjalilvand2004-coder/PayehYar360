@@ -33,6 +33,14 @@ class ReverseDecision(BaseModel):
     note: str | None = None
 
 
+@router.get("/quality/overview")
+def quality_overview(actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor", "auditor")),
+                     tenant: Tenant = Depends(get_tenant), db: Session = Depends(get_db)):
+    """داشبورد تجمیعی کیفیت داده: امتیاز، ابعاد، حوزه‌ها و ۱۷ بررسی با drill-down."""
+    from app.modules.data_quality import insights
+    return insights.run_overview(db, tenant.id)
+
+
 @router.get("/quality/duplicate-scan")
 def duplicate_scan(actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor")),
                    tenant: Tenant = Depends(get_tenant), db: Session = Depends(get_db)):

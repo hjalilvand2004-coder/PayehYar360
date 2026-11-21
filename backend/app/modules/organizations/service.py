@@ -82,13 +82,24 @@ def update_org(db: Session, tenant_id, actor: Actor, org_id, data: dict, expecte
     org = get_org(db, tenant_id, org_id)
     ownership_svc.check_edit_allowed(db, tenant_id, actor, "organization", "general")
     before = _org_out(org)
+    # تغییر کد: یکتایی (نوع، کد) در سطح مشتری — کد، دسترسی سایر سامانه‌هاست و با احتیاط تغییر می‌کند
+    new_code = (data.get("code") or "").strip() or None
+    if new_code and new_code != org.code:
+        dup = db.execute(select(Organization).where(
+            Organization.tenant_id == tenant_id, Organization.type == org.type,
+            Organization.code == new_code, Organization.id != org.id)).scalar_one_or_none()
+        if dup is not None:
+            raise conflict("ORG_DUPLICATE", "کد سازمان با همین نوع قبلاً ثبت شده است.")
+        data["code"] = new_code
+    else:
+        data.pop("code", None)
     if data.get("parent_id") is not None:
         if str(data["parent_id"]) == str(org.id):
             raise conflict("ORG_CYCLE", "جابه‌جایی سازمان زیر خودش مجاز نیست.")
         _ensure_same_tenant_parent(db, tenant_id, data["parent_id"])
         if _would_cycle(db, tenant_id, org.id, data["parent_id"]):
             raise conflict("ORG_CYCLE", "این جابه‌جایی چرخه در ساختار سازمانی ایجاد می‌کند.")
-    changed = [k for k in ("name", "sort_order", "status", "parent_id")
+    changed = [k for k in ("code", "name", "sort_order", "status", "parent_id")
                if k in data and data[k] is not None and data[k] != getattr(org, k)]
     if not changed:
         return _org_out(org)
