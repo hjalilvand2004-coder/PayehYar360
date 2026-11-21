@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PayehYar360 — Shared Core & Master Data",
     description="هسته مشترک و اطلاعات پایه پلتفرم دانشجو۳۶۰ (پایه‌یار۳۶۰) — شرکت ماه‌افزار هوشمند رسا",
-    version="1.0.6",
+    version="1.0.7",
     lifespan=lifespan,
     docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json",
 )
@@ -150,6 +150,7 @@ from app.modules.change_requests.router import router as change_requests_router 
 from app.modules.data_quality.router import router as quality_router  # noqa: E402
 from app.modules.identities.router import router as identities_router  # noqa: E402
 from app.modules.integrations.router import router as integrations_router  # noqa: E402
+from app.modules.masterdata.router import router as masterdata_router  # noqa: E402
 from app.modules.organizations.router import router as organizations_router  # noqa: E402
 from app.modules.ownership.router import router as ownership_router  # noqa: E402
 from app.modules.persons.router import router as persons_router  # noqa: E402
@@ -165,6 +166,7 @@ app.include_router(change_requests_router, prefix=API)
 app.include_router(quality_router, prefix=API)
 app.include_router(sync_router, prefix=API)
 app.include_router(integrations_router, prefix=API)
+app.include_router(masterdata_router, prefix=API)
 app.include_router(audit_router, prefix=API)
 
 from app.auth_router import router as auth_router  # noqa: E402
@@ -179,7 +181,7 @@ def meta():
     from app.messaging import rabbitmq
     out = {
         "app": "payehyar360-shared-core",
-        "version": "1.0.6",
+        "version": "1.0.7",
         "env": s.ENV,
         "auth_mode": "dev" if s.DEV_AUTH else "oidc",
         "dev_mode": s.DEV_AUTH,

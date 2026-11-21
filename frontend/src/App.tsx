@@ -14,17 +14,23 @@ import Quality from './features/quality/Quality'
 import ChangeRequests from './features/changeRequests/ChangeRequests'
 import Integrations from './features/integrations/Integrations'
 import Audit from './features/audit/Audit'
+import Instructors from './features/masterdata/Instructors'
+import Classrooms from './features/masterdata/Classrooms'
+import MasterServices from './features/masterdata/MasterServices'
 
 const NAV = [
   { to: '/', label: 'داشبورد', icon: '▦', end: true },
   { to: '/persons', label: 'اشخاص', icon: '👤' },
   { to: '/organizations', label: 'سازمان‌ها', icon: '🏛' },
   { to: '/references', label: 'اطلاعات پایه', icon: '📚' },
+  { to: '/instructors', label: 'اساتید', icon: '🧑‍🏫' },
+  { to: '/classrooms', label: 'کلاس‌ها و سالن‌ها', icon: '🏫' },
   { to: '/mappings', label: 'نگاشت شناسه', icon: '🔗' },
   { to: '/ownership', label: 'مالکیت داده', icon: '🔐' },
   { to: '/quality', label: 'کیفیت داده', icon: '♻️' },
   { to: '/change-requests', label: 'درخواست اصلاح', icon: '✏️' },
   { to: '/integrations', label: 'اتصال‌ها', icon: '🛰' },
+  { to: '/services', label: 'سرویس‌های داده', icon: '🔌' },
   { to: '/audit', label: 'ممیزی', icon: '🗂' },
 ]
 
@@ -134,7 +140,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-foot muted small">
-          نسخه ۱.۰.۶ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
+          نسخه ۱.۰.۷ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
         </div>
       </aside>
       <div className="main">
@@ -158,6 +164,9 @@ export default function App() {
             <Route path="/persons/:id" element={<PersonDetail />} />
             <Route path="/organizations" element={<Organizations />} />
             <Route path="/references" element={<References />} />
+            <Route path="/instructors" element={<Instructors />} />
+            <Route path="/classrooms" element={<Classrooms />} />
+            <Route path="/services" element={<MasterServices />} />
             <Route path="/mappings" element={<Mappings />} />
             <Route path="/ownership" element={<Ownership />} />
             <Route path="/quality" element={<Quality />} />

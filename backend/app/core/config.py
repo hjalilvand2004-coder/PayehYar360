@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     OUTBOX_RETRY_BASE_SECONDS: float = 3.0
     WORKERS_IN_PROCESS: bool = False  # اجرای workerها داخل فرآیند API (دمو/توسعه)
 
+    # --- منابع داده خارجی برای همگام‌سازی اطلاعات پایه (اساتید/کلاس‌ها) ---
+    # واکشی اساتید از سامانه نظرسنجی دروس: کوکی مرورگر با دسترسی admin یا endpoint JSON
+    DARSYAR_BASE: str = "https://darsyar360.ir"
+    DARSYAR_ADMIN_COOKIE: str = ""   # مثال: "session=...؛ از DevTools مرورگر با لاگین ادمین"
+    DARSYAR_INSTRUCTORS_JSON_URL: str = ""  # اگر endpoint JSON برای اساتید در دسترس باشد
+    # واکشی کلاس‌ها/سالن‌ها از سامانه برنامه‌ریزی درسی (barnamehyar360)
+    SCHEDULER_BASE: str = "http://188.212.96.235:8083"
+    SCHEDULER_USERNAME: str = ""     # کاربر دارای دسترسی «کلاس‌ها و سالن‌ها»
+    SCHEDULER_PASSWORD: str = ""
+    EXTERNAL_HTTP_TIMEOUT: float = 20.0
+
     # --- RabbitMQ ---
     RABBITMQ_URL: str = ""  # خالی = انتشار غیرفعال؛ رویدادها در Outbox می‌مانند
     RABBITMQ_EXCHANGE: str = "shared-core.events"

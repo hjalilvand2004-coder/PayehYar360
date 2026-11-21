@@ -11,3 +11,4 @@ from app.modules.synchronization import models as synchronization_models  # noqa
 from app.modules.audit import models as audit_models  # noqa: F401
 
 from app.common.db import Base  # noqa: F401
+from app.modules.masterdata import models as masterdata_models  # noqa: F401
