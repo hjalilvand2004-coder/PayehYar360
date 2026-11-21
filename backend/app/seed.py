@@ -243,7 +243,8 @@ def seed_demo(db: Session) -> None:
             attrs["prerequisite_unresolved"] = c["prereq_unresolved"]
         parent = section_item_ids.get(c["section"])
         create_item(db, tenant.id, actor, "unique_courses", {
-            "code": f"UC-{c['id']}", "title": c["title"], "sort_order": c["group_order"],
+            # کد یکتا = شناسه خام منبع (بدون پیشوند) — سامانه‌های دیگر با همین کد کار می‌کنند
+            "code": str(c["id"]), "title": c["title"], "sort_order": c["group_order"],
             "parent_id": uuid.UUID(parent) if parent else None, "attrs": attrs,
         })
 

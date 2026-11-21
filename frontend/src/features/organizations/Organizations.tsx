@@ -127,7 +127,11 @@ function OrgForm({
       <div className="modal-foot">
         <button
           className="btn primary"
-          onClick={() => onSubmit({ type, code, name, parent_id: parentId || null, sort_order: org?.sort_order ?? 0 })}
+          onClick={() => onSubmit(org
+            // قرارداد PATCH سازمان فقط name/parent_id/sort_order را می‌پذیرد — type/code تغییرناپذیرند
+            // (ارسال فیلد اضافه با extra="forbid" به خطای 422 «ورودی ارسالی معتبر نیست» می‌رسید)
+            ? { name, parent_id: parentId || null, sort_order: org.sort_order ?? 0 }
+            : { type, code, name, parent_id: parentId || null, sort_order: 0 })}
         >ذخیره</button>
         <button className="btn" onClick={onCancel}>انصراف</button>
       </div>
