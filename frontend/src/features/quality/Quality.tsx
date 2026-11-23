@@ -62,6 +62,9 @@ const COL_LABELS: Record<string, string> = {
   entity_status: 'وضعیت هدف', installation: 'نصب', installation_status: 'وضعیت نصب', mode: 'حالت',
   type: 'نوع', version: 'نسخه', prereq_code: 'کد پیش‌نیاز', prereq_title: 'عنوان پیش‌نیاز',
   estimated_capacity: 'ظرفیت برآوردی', valid_to: 'اعتبار تا', cycle_root: 'گره حلقه',
+  syllabus_id: 'شناسه سرفصل', title_fa: 'عنوان فارسی', title_en: 'عنوان انگلیسی',
+  source_set: 'مجموعه', topics_count: 'تعداد سرفصل', duplicate_in: 'تکراری در مجموعه',
+  duplicate_code_in: 'کد تکراری در مجموعه',
 }
 
 function scoreCls(score: number): string {

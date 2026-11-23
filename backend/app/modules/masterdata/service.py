@@ -713,6 +713,29 @@ def syllabi_stats(db: Session, tenant_id) -> dict:
             "sets_labels": SYLLABI_SETS}
 
 
+def delete_syllabus_set(db: Session, tenant_id, actor: Actor, source_set: str) -> dict:
+    """حذف کامل یک مجموعه سرفصل (مثلاً نسخه ناقص/اسکن‌شده) به‌همراه سرفصل‌هایش — برای ایمپورت مجدد."""
+    sset = (source_set or "").strip()
+    if not sset:
+        raise not_found("مجموعه مشخص نشده است.")
+    syl_ids = [r for r in db.execute(select(CourseSyllabus.id).where(
+        CourseSyllabus.tenant_id == tenant_id,
+        CourseSyllabus.source_set == sset)).scalars().all()]
+    if not syl_ids:
+        raise not_found(f"مجموعه «{sset}» یافت نشد.")
+    del_topics = db.execute(delete(CourseSyllabusTopic).where(
+        CourseSyllabusTopic.syllabus_id.in_(syl_ids)))
+    del_syl = db.execute(delete(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id, CourseSyllabus.source_set == sset))
+    db.flush()
+    log_fetch(db, tenant_id, direction="in", domain="course-syllabi", source="manual",
+              endpoint=f"masterdata/syllabi/set/{sset}",
+              record_count=int(del_syl.rowcount or 0),
+              error=f"حذف {int(del_topics.rowcount or 0)} سرفصل همراه سندها")
+    return {"source_set": sset, "deleted_syllabi": int(del_syl.rowcount or 0),
+            "deleted_topics": int(del_topics.rowcount or 0)}
+
+
 def _syllabus_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:
     stmt = select(CourseSyllabus).where(CourseSyllabus.tenant_id == tenant_id,
                                         CourseSyllabus.status == "active")

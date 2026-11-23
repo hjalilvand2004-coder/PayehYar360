@@ -183,14 +183,24 @@ def _syllabi_seed_items() -> list[dict]:
 
 
 def _seed_syllabi(db: Session) -> None:
-    """واردکردن idempotent سرفصل‌ها در مشتری demo — حتی برای نصب‌های موجود."""
+    """واردکردن idempotent سرفصل‌ها در مشتری demo — حتی برای نصب‌های موجود.
+
+    ارتقا: اگر نسخه قدیمی (سند ۱۳۹۴ اسکن‌شده بدون متن از v1.0.9) موجود باشد،
+    ایمپورت مجدد با داده کامل OCR انجام می‌شود (upsert بر کلید مجموعه+فایل).
+    """
     tenant = db.execute(select(Tenant).where(Tenant.code == DEMO_TENANT_CODE)).scalar_one_or_none()
     if tenant is None:
         return
     has_any = db.execute(select(func.count()).select_from(CourseSyllabus).where(
         CourseSyllabus.tenant_id == tenant.id)).scalar() or 0
     if has_any:
-        return
+        stale = db.execute(select(func.count()).select_from(CourseSyllabus).where(
+            CourseSyllabus.tenant_id == tenant.id,
+            CourseSyllabus.source_set == "1394",
+            CourseSyllabus.has_text.is_(False))).scalar() or 0
+        if not stale:
+            return
+        log.info("Syllabi upgrade: %d سند ۱۳۹۴ اسکن‌شده با نسخه OCR بازنویسی می‌شود", stale)
     items = _syllabi_seed_items()
     if not items:
         log.info("Syllabi seed file not found — پرش (قابل ایمپورت از پنل یا API)")

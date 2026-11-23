@@ -107,6 +107,15 @@ def import_syllabi(payload: ImportItems, request: Request,
     return out
 
 
+@router.delete("/masterdata/syllabi/set/{source_set}")
+def delete_syllabus_set(source_set: str, request: Request,
+                        actor: Actor = Depends(require_roles("steward", "tenant_admin")),
+                        tenant: Tenant = Depends(get_tenant), db: Session = Depends(get_db)):
+    out = svc.delete_syllabus_set(db, tenant.id, actor, source_set)
+    db.commit()
+    return out
+
+
 @router.post("/masterdata/sync/instructors")
 def sync_instructors(request: Request,
                      actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor")),

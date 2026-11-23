@@ -123,3 +123,38 @@ def test_syllabus_service_domain_for_other_systems(client, tenant1):
     r = client.get("/api/v1/masterdata/catalog", headers=h)
     domains = {d["domain"]: d["count"] for d in r.json()["items"]}
     assert domains.get("course-syllabi", 0) >= 1
+
+
+def test_syllabus_delete_set_and_quality_checks(client, tenant1):
+    h = dev_headers(tenant=tenant1)
+    client.post("/api/v1/masterdata/import/syllabi",
+                json={"items": [CE_ITEM, NP_ITEM, {**CE_ITEM, "source_file": "Extra.pdf",
+                                                   "title_en": "Advanced Logic Design",
+                                                   "title_fa": "مدارهای منطقی پیشرفته"}]}, headers=h)
+
+    # حذف یک مجموعه کامل + سرفصل‌هایش
+    r = client.delete("/api/v1/masterdata/syllabi/set/NP1400", headers=h)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["deleted_syllabi"] == 1 and out["deleted_topics"] == 2
+    r = client.get("/api/v1/masterdata/syllabi?source_set=NP1400", headers=h)
+    assert len(r.json()["items"]) == 0
+    r = client.get("/api/v1/masterdata/syllabi?source_set=CE403", headers=h)
+    assert len(r.json()["items"]) == 2
+    # مجموعه ناموجود → 404
+    r = client.delete("/api/v1/masterdata/syllabi/set/NOPE", headers=h)
+    assert r.status_code == 404
+
+    # بررسی‌های کیفیت سرفصل‌ها در داشبورد کیفیت
+    r = client.get("/api/v1/quality/overview", headers=h)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    dom = next(d for d in data["domains"] if d["key"] == "syllabi")
+    assert dom["checks"] >= 7
+    syl_checks = {c["check_id"]: c for c in data["checks"] if c["domain"] == "syllabi"}
+    # عنوان تکراری در مجموعه کشف شده
+    assert syl_checks["syllabi_duplicate_title_in_set"]["affected"] >= 2
+    # درس NP حذف شد ولی CE سرفصل دارد — بررسی بدون سرفصل فقط متأثرهای واقعی را می‌شمارد
+    assert syl_checks["syllabi_no_topics"]["total"] == 2
+    assert "syllabi_missing_title_fa" in syl_checks
+    assert "syllabi_scanned_no_text" in syl_checks

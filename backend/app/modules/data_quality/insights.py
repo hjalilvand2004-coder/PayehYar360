@@ -11,13 +11,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.common import statuses
 from app.common.db import utcnow
 from app.modules.identities.models import ExternalIdMapping
 from app.modules.integrations.models import SystemInstallation
+from app.modules.masterdata.models import CourseSyllabus, CourseSyllabusTopic
 from app.modules.organizations.models import Organization
 from app.modules.persons.models import Person, PersonIdentifier
 from app.modules.references.models import ReferenceItem, ReferenceSet
@@ -38,6 +39,7 @@ DOMAINS = [
     ("organizations", "سازمان‌ها"),
     ("references", "اطلاعات پایه"),
     ("mappings", "نگاشت شناسه"),
+    ("syllabi", "سرفصل دروس"),
 ]
 
 
@@ -426,13 +428,153 @@ def _run_mapping_checks(db: Session, tenant_id, checks: list[_Check]) -> None:
     checks.append(c)
 
 
+def _run_syllabus_checks(db: Session, tenant_id, checks: list[_Check]) -> None:
+    """بررسی‌های کیفیت سرفصل‌های مصوب — حوزه syllabi (کامل‌بودن، یکتایی، پوشش)."""
+    rows = list(db.execute(select(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id,
+        CourseSyllabus.status == "active")).scalars().all())
+    if not rows:
+        return
+    tcount = dict(db.execute(
+        select(CourseSyllabusTopic.syllabus_id, func.count()).group_by(
+            CourseSyllabusTopic.syllabus_id)).all())
+
+    def _row(s: CourseSyllabus) -> dict:
+        return {"syllabus_id": str(s.id), "title_fa": s.title_fa or "—",
+                "title_en": s.title_en, "source_set": s.source_set,
+                "topics_count": tcount.get(s.id, 0)}
+
+    # ۱۸) پوشش: سند اسکن‌شده بدون لایه متنی — جزئیات هنوز OCR نشده
+    c = _Check("syllabi_scanned_no_text", "coverage", "syllabi",
+               "سند سرفصل اسکن‌شده بدون متن استخراج‌شده",
+               "medium",
+               "PDF منبع اسکن‌شده است و جزئیات (هدف، سرفصل‌ها، منابع) هنوز ثبت نشده؛ فقط کاتالوگ اولیه (عنوان) موجود است.",
+               "سند اصلی ویندوز/موبایل اسکن‌شده با کیفیت پایین؛ OCR فارسی انجام نشده.",
+               "سند را با OCR فارسی بازخوانی و با ایمپورت همان source_file بروزرسانی کنید.")
+    c.set_total(len(rows))
+    for s in rows:
+        if not s.has_text:
+            c.hit(_row(s))
+    checks.append(c)
+
+    # ۱۹) کامل‌بودن: عنوان فارسی خالی
+    c = _Check("syllabi_missing_title_fa", "completeness", "syllabi",
+               "عنوان فارسی درس ثبت نشده",
+               "medium",
+               "بدون عنوان فارسی، تطبیق سرفصل با درس‌های یکتا و جست‌وجوی کاربران فارسی‌زبان ناقص می‌ماند.",
+               "استخراج خودکار عنوان فارسی از سند ممکن است شکست خورده باشد.",
+               "عنوان فارسی را از سند منبع استخراج و با ایمپورت idempotent بروزرسانی کنید.")
+    c.set_total(len(rows))
+    for s in rows:
+        if not _s(s.title_fa):
+            c.hit(_row(s))
+    checks.append(c)
+
+    # ۲۰) کامل‌بودن: کد درس خالی
+    c = _Check("syllabi_missing_course_code", "completeness", "syllabi",
+               "کد درس ثبت نشده",
+               "low",
+               "کد درس پیوند سرفصل با سیستم‌های برنامه‌ریزی/تربیت است؛ نبودش تطبیق خودکار را از کار می‌اندازد.",
+               "قالب سند منبع کد درس نداشته یا استخراج نشده.",
+               "کد رسمی درس را ثبت کنید؛ در نبود کد، تطبیق بر اساس عنوان انجام می‌شود.")
+    c.set_total(len(rows))
+    for s in rows:
+        if not _s(s.course_code):
+            c.hit(_row(s))
+    checks.append(c)
+
+    # ۲۱) کامل‌بودن: واحد و ساعت نامشخص
+    c = _Check("syllabi_missing_units_hours", "completeness", "syllabi",
+               "واحد یا ساعت درس نامشخص",
+               "medium",
+               "هیچ مقداری برای واحد/ساعت (نظری یا عملی) ثبت نشده؛ برنامه‌ریزی درسی نمی‌تواند از این سرفصل استفاده کند.",
+               "سند منبع فیلد واحد/ساعت نداشته یا اسکن‌شده است.",
+               "واحد و ساعت نظری/عملی را از سند مصوب استخراج و بروزرسانی کنید.")
+    c.set_total(len(rows))
+    for s in rows:
+        if s.unit_theory is None and s.unit_practice is None and \
+           s.hour_theory is None and s.hour_practice is None:
+            c.hit(_row(s))
+    checks.append(c)
+
+    # ۲۲) کامل‌بودن: بدون سرفصل/ریز محتوا
+    c = _Check("syllabi_no_topics", "completeness", "syllabi",
+               "درس بدون هیچ سرفصل/ریز محتوایی",
+               "high",
+               "قلب داده سرفصل‌ها خالی است؛ سایر سامانه‌ها (برنامه‌ریزی، سنجش، آموزش) محتوای قابل مصرفی ندارند.",
+               "سند اسکن‌شده بدون OCR، یا بخش فهرست مطالب در سند منبع نیامده.",
+               "فهرست مطالب سند را استخراج و با ایمپورت همان source_file اضافه کنید.")
+    c.set_total(len(rows))
+    for s in rows:
+        if tcount.get(s.id, 0) == 0:
+            c.hit(_row(s))
+    checks.append(c)
+
+    # ۲۳) کامل‌بودن: بدون هدف کلی
+    c = _Check("syllabi_missing_goal", "completeness", "syllabi",
+               "هدف کلی درس ثبت نشده",
+               "low",
+               "هدف کلی، خلاصه راهبردی سند است؛ نبودش کیفیت نمایش سرفصل در سامانه‌های مصرف‌کننده را می‌کاهد.",
+               "بخش اهداف در سند منبع نبوده یا استخراج نشده.",
+               "هدف کلی را از سند منبع تکمیل کنید.")
+    c.set_total(len(rows))
+    for s in rows:
+        if not _s(s.general_goal):
+            c.hit(_row(s))
+    checks.append(c)
+
+    # ۲۴) یکتایی: عنوان تکراری در یک مجموعه
+    by_key: dict[tuple, list] = {}
+    for s in rows:
+        key_title = _s(s.title_fa) or _s(s.title_en)
+        key_title = " ".join(key_title.split()).lower()
+        if key_title:
+            by_key.setdefault((s.source_set, key_title), []).append(s)
+    c = _Check("syllabi_duplicate_title_in_set", "uniqueness", "syllabi",
+               "عنوان تکراری در یک مجموعه",
+               "medium",
+               "دو سند با عنوان یکسان در یک مجموعه مصوب ثبت شده؛ احتمال تکرار فایل یا خطای پارس.",
+               "فایل تکراری در منبع، یا عنوان پیش‌فرض یکسان از نام‌گذاری اشتباه.",
+               "سند تکراری را پس از بررسی حذف یا عنوان را اصلاح کنید؛ ردیف‌های زیر فهرست تکراری‌هاست.")
+    c.set_total(len(rows))
+    for (sset, _title), group in sorted(by_key.items()):
+        if len(group) > 1:
+            for s in group:
+                row = _row(s)
+                row["duplicate_in"] = sset
+                c.hit(row)
+    checks.append(c)
+
+    # ۲۵) یکتایی: کد درس تکراری در یک مجموعه
+    by_code: dict[tuple, list] = {}
+    for s in rows:
+        code = _s(s.course_code)
+        if code:
+            by_code.setdefault((s.source_set, code), []).append(s)
+    c = _Check("syllabi_duplicate_code_in_set", "uniqueness", "syllabi",
+               "کد درس تکراری در یک مجموعه",
+               "low",
+               "یک کد به دو سند مختلف اختصاص یافته؛ پیوند خودکار با درس‌های یکتا مبهم می‌شود.",
+               "خطای پارس استخراج کد، یا دو نسخه از یک درس با کد مشترک.",
+               "کد را برای هر سند یکتا کنید یا یکی از رکوردها را حذف نمایید.")
+    c.set_total(len(rows))
+    for (sset, _code), group in sorted(by_code.items()):
+        if len(group) > 1:
+            for s in group:
+                row = _row(s)
+                row["duplicate_code_in"] = sset
+                c.hit(row)
+    checks.append(c)
+
+
 def run_overview(db: Session, tenant_id) -> dict:
-    """داشبورد تجمیعی کیفیت: امتیاز کل، ابعاد، حوزه‌ها و ۱۷ بررسی با ردیف‌های drill-down."""
+    """داشبورد تجمیعی کیفیت: امتیاز کل، ابعاد، حوزه‌ها و بررسی‌ها با ردیف‌های drill-down."""
     checks: list[_Check] = []
     _run_person_checks(db, tenant_id, checks)
     _run_org_checks(db, tenant_id, checks)
     _run_reference_checks(db, tenant_id, checks)
     _run_mapping_checks(db, tenant_id, checks)
+    _run_syllabus_checks(db, tenant_id, checks)
 
     outs = [c.out() for c in checks]
     wsum = sum(WEIGHTS[c["severity"]] for c in outs)

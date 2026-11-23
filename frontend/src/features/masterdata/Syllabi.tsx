@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../../api/client'
-import { Empty, ErrorBox, Loading, Modal, PageHead } from '../../components/ui'
+import { Empty, ErrorBox, Loading, Modal, PageHead, ConfirmInline } from '../../components/ui'
 import { fmtNumber } from '../../shared/format'
 
 interface SyllabusRow {
@@ -84,6 +84,20 @@ export default function Syllabi() {
     onError: (e) => setError((e as ApiError).message),
   })
 
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const deleteSet = useMutation({
+    mutationFn: (sset: string) =>
+      api<{ source_set: string; deleted_syllabi: number; deleted_topics: number }>(
+        `/api/v1/masterdata/syllabi/set/${encodeURIComponent(sset)}`, { method: 'DELETE' }),
+    onSuccess: (d) => {
+      setDeleteOpen(false); setSetFilter('')
+      setNotice(`مجموعه «${SET_BADGE[d.source_set] || d.source_set}» حذف شد: ${d.deleted_syllabi} سند و ${d.deleted_topics} سرفصل.`)
+      setError(''); qc.invalidateQueries({ queryKey: ['syllabi'] }); qc.invalidateQueries({ queryKey: ['syllabi-stats'] })
+      qc.invalidateQueries({ queryKey: ['md-catalog'] })
+    },
+    onError: (e) => setError((e as ApiError).message),
+  })
+
   const unitText = (r: SyllabusRow) => {
     const parts = []
     if (r.unit_theory) parts.push(`نظری ${fmtNumber(r.unit_theory)}`)
@@ -106,6 +120,15 @@ export default function Syllabi() {
       />
       {error && <div className="alert error">{error}</div>}
       {notice && <div className="alert info">{notice}</div>}
+
+      {deleteOpen && setFilter && (
+        <ConfirmInline
+          message={`کل سندهای مجموعه «${SET_BADGE[setFilter] || setFilter}» به‌همراه همه سرفصل‌های آن‌ها حذف می‌شود (مثلاً برای ایمپورت مجدد نسخه کامل OCRشده). این عمل بازگشت‌ناپذیر است — ادامه؟`}
+          busy={deleteSet.isPending}
+          onConfirm={() => deleteSet.mutate(setFilter)}
+          onCancel={() => setDeleteOpen(false)}
+        />
+      )}
 
       {stats.data && (
         <div className="card" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -134,6 +157,10 @@ export default function Syllabi() {
               {SET_BADGE[s]}
             </button>
           ))}
+          {setFilter && (
+            <button className="btn danger sm" title="حذف کل سندهای این مجموعه برای ایمپورت مجدد"
+                    onClick={() => setDeleteOpen(true)}>حذف مجموعه</button>
+          )}
         </div>
         {items.isLoading ? <Loading /> : items.error ? <ErrorBox error={items.error} /> : (
           <div className="table-wrap">
