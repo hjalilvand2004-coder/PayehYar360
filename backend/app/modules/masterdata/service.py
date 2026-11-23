@@ -13,6 +13,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.common import statuses
+from app.common.events import record_audit
 from app.common.jalali import jalali_str
 from app.core.config import settings
 from app.core.errors import conflict, forbidden, not_found, unauthorized
@@ -734,6 +735,66 @@ def delete_syllabus_set(db: Session, tenant_id, actor: Actor, source_set: str) -
               error=f"حذف {int(del_topics.rowcount or 0)} سرفصل همراه سندها")
     return {"source_set": sset, "deleted_syllabi": int(del_syl.rowcount or 0),
             "deleted_topics": int(del_topics.rowcount or 0)}
+
+
+SYLLABUS_EDITABLE = ("title_fa", "title_en", "course_code", "course_type",
+                     "unit_theory", "unit_practice", "hour_theory", "hour_practice",
+                     "prerequisites", "corequisites", "general_goal", "evaluation",
+                     "references")
+SYLLABUS_INT_FIELDS = ("unit_theory", "unit_practice", "hour_theory", "hour_practice")
+
+
+def update_syllabus(db: Session, tenant_id, actor: Actor, syllabus_id, data: dict,
+                    request: Request | None = None) -> dict:
+    """ویرایش سرفصل مصوب (مدیر سامانه/نگهبان/ویرایشگر) — فیلدها + بازنویسی اختیاری ریز محتوا.
+
+    ویرایش دستی یعنی داده اکنون مرتب‌شده است: برچسب has_text (اسکن بدون متن) برداشته می‌شود
+    و updated_at برای همگام‌سازی دلتایی سایر سامانه‌ها به‌روز می‌شود.
+    """
+    row = db.execute(select(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id, CourseSyllabus.id == syllabus_id)).scalar_one_or_none()
+    if row is None:
+        raise not_found("سرفصل یافت نشد.")
+    before = get_syllabus(db, tenant_id, syllabus_id)
+    changed: list[str] = []
+    for k in SYLLABUS_EDITABLE:
+        if k not in data:
+            continue
+        v = data[k]
+        if k in SYLLABUS_INT_FIELDS:
+            v = _as_int(v)
+        else:
+            v = str(v).strip() if v is not None else None
+            if not v:
+                v = None
+        if v != getattr(row, k):
+            setattr(row, k, v)
+            changed.append(k)
+    if not (str(data.get("title_en") or "").strip() or row.title_en or "").strip():
+        raise conflict("SYLLABUS_TITLE_REQUIRED", "عنوان انگلیسی خالی قابل ذخیره نیست — کلید تطبیق سرفصل است.")
+    if data.get("topics") is not None:
+        clean_topics = [t for t in data["topics"]
+                        if isinstance(t, dict) and str(t.get("title") or "").strip()]
+        db.execute(delete(CourseSyllabusTopic).where(CourseSyllabusTopic.syllabus_id == row.id))
+        for idx, t in enumerate(clean_topics, start=1):
+            db.add(CourseSyllabusTopic(
+                syllabus_id=row.id, seq=_as_int(t.get("seq")) or idx,
+                title=str(t["title"]).strip(),
+                hours=_as_int(t.get("hours")), hours_practice=_as_int(t.get("hours_practice"))))
+        changed.append("topics")
+    if not changed:
+        return before
+    if row.has_text is False:
+        row.has_text = True  # ویرایش دستی = داده مرتب‌شده؛ از گزارش «اسکن بدون متن» خارج می‌شود
+    db.flush()
+    after = get_syllabus(db, tenant_id, syllabus_id)
+    log_fetch(db, tenant_id, direction="in", domain="course-syllabi", source="manual",
+              endpoint="masterdata/syllabi", record_count=1,
+              error=f"ویرایش سرفصل — فیلدها: {', '.join(changed)}")
+    record_audit(db, tenant_id, actor, "syllabus.update", "course_syllabus", str(row.id),
+                 before, after, request=request,
+                 note=f"ویرایش سرفصل مصوب — فیلدها: {', '.join(changed)}")
+    return after
 
 
 def _syllabus_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:

@@ -158,3 +158,49 @@ def test_syllabus_delete_set_and_quality_checks(client, tenant1):
     assert syl_checks["syllabi_no_topics"]["total"] == 2
     assert "syllabi_missing_title_fa" in syl_checks
     assert "syllabi_scanned_no_text" in syl_checks
+
+
+def test_syllabus_edit_patch(client, tenant1):
+    h = dev_headers(tenant=tenant1)
+    r = client.post("/api/v1/masterdata/import/syllabi",
+                    json={"items": [{**CE_ITEM, "has_text": False}]}, headers=h)
+    assert r.status_code == 201, r.text
+    r = client.get("/api/v1/masterdata/syllabi?source_set=CE403", headers=h)
+    sid = r.json()["items"][0]["id"]
+    assert r.json()["items"][0]["has_text"] is False  # شبیه رکورد اسکن (بدون متن)
+
+    # ویرایش فیلدها + بازنویسی ریز محتوا
+    r = client.patch(f"/api/v1/masterdata/syllabi/{sid}", headers=h, json={
+        "title_fa": "منطق پیشرفته (ویرایش دستی)", "course_code": "CSE-401",
+        "unit_theory": 3, "hour_theory": 48, "general_goal": "هدف اصلاح‌شده",
+        "topics": [{"title": "سرفصل اول"}, {"title": "سرفصل دوم", "hours": 8},
+                   {"title": "سرفصل سوم"}]})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["title_fa"] == "منطق پیشرفته (ویرایش دستی)"
+    assert out["course_code"] == "CSE-401" and out["unit_theory"] == 3
+    assert out["has_text"] is True  # ویرایش دستی برچسب اسکن را برمی‌دارد
+    assert [t["title"] for t in out["topics"]] == ["سرفصل اول", "سرفصل دوم", "سرفصل سوم"]
+    assert out["topics"][1]["hours"] == 8 and out["topics"][0]["seq"] == 1
+
+    # پاک‌سازی فیلد با ارسال null
+    r = client.patch(f"/api/v1/masterdata/syllabi/{sid}", headers=h, json={"course_code": None})
+    assert r.status_code == 200 and r.json()["course_code"] is None
+
+    # بدون هیچ تغییر → بدون خطا
+    r = client.patch(f"/api/v1/masterdata/syllabi/{sid}", headers=h, json={})
+    assert r.status_code == 200
+
+    # سرفصل ناموجود → 404؛ نقش بدون دسترسی → 403
+    r = client.patch("/api/v1/masterdata/syllabi/00000000-0000-0000-0000-000000000000",
+                     headers=h, json={"title_fa": "x"})
+    assert r.status_code == 404
+    r = client.patch(f"/api/v1/masterdata/syllabi/{sid}", json={"title_fa": "x"},
+                     headers=dev_headers(tenant=tenant1, roles="auditor"))
+    assert r.status_code == 403
+
+    # سابقه ممیزی ثبت شده
+    r = client.get("/api/v1/audit-logs?entity_type=course_syllabus", headers=h)
+    assert r.status_code == 200, r.text
+    ops = [a["operation"] for a in r.json()["items"]]
+    assert "syllabus.update" in ops

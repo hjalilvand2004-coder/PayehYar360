@@ -45,7 +45,7 @@ def main() -> None:
 
     port = int(os.environ["PORT"])
     print("=" * 56)
-    print("  PayehYar360 — Shared Core & Master Data (portable v1.0.10)")
+    print("  PayehYar360 — Shared Core & Master Data (portable v1.0.11)")
     print(f"  Panel & API:  http://localhost:{port}")
     print(f"  Swagger:      http://localhost:{port}/docs")
     print(f"  Data dir:     {data_dir}")

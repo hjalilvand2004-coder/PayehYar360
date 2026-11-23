@@ -116,6 +116,34 @@ def delete_syllabus_set(source_set: str, request: Request,
     return out
 
 
+class SyllabusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title_fa: str | None = None
+    title_en: str | None = None
+    course_code: str | None = None
+    course_type: str | None = None
+    unit_theory: int | None = None
+    unit_practice: int | None = None
+    hour_theory: int | None = None
+    hour_practice: int | None = None
+    prerequisites: str | None = None
+    corequisites: str | None = None
+    general_goal: str | None = None
+    evaluation: str | None = None
+    references: str | None = None
+    topics: list[dict] | None = None
+
+
+@router.patch("/masterdata/syllabi/{syllabus_id}")
+def update_syllabus(syllabus_id: uuid.UUID, payload: SyllabusUpdate, request: Request,
+                    actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor")),
+                    tenant: Tenant = Depends(get_tenant), db: Session = Depends(get_db)):
+    data = payload.model_dump(exclude_unset=True)
+    out = svc.update_syllabus(db, tenant.id, actor, syllabus_id, data, request=request)
+    db.commit()
+    return out
+
+
 @router.post("/masterdata/sync/instructors")
 def sync_instructors(request: Request,
                      actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor")),

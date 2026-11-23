@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../../api/client'
 import { Empty, ErrorBox, Loading, Modal, PageHead, ConfirmInline } from '../../components/ui'
 import { fmtNumber } from '../../shared/format'
+import { useAuth } from '../../auth/AuthContext'
 
 interface SyllabusRow {
   id: string
@@ -46,6 +47,8 @@ const SETS = ['1394', 'CE403', 'NP1400']
 /** صفحه سرفصل‌های مصوب دروس — اطلاعات پایه مشترک اکوسیستم؛ مصرف سایر سامانه‌ها از دامنه course-syllabi */
 export default function Syllabi() {
   const qc = useQueryClient()
+  const { me } = useAuth()
+  const canEdit = (me?.roles || []).some((r) => ['master_data_editor', 'steward', 'tenant_admin'].includes(r))
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [search, setSearch] = useState('')
@@ -53,6 +56,10 @@ export default function Syllabi() {
   const [importOpen, setImportOpen] = useState(false)
   const [rawJson, setRawJson] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<Record<string, string>>({})
+  const [editTopics, setEditTopics] = useState<Array<{ title: string; hours: string; hours_practice: string }>>([])
 
   const stats = useQuery({
     queryKey: ['syllabi-stats'],
@@ -97,6 +104,67 @@ export default function Syllabi() {
     },
     onError: (e) => setError((e as ApiError).message),
   })
+
+  const editSyllabus = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api<SyllabusDetail>(`/api/v1/masterdata/syllabi/${id}`, { method: 'PATCH', body }),
+    onSuccess: () => {
+      setEditOpen(false); setEditId(null)
+      setNotice('سرفصل ویرایش شد — سایر سامانه‌ها در همگام‌سازی دلتایی این تغییر را دریافت می‌کنند.')
+      setError(''); qc.invalidateQueries({ queryKey: ['syllabi'] }); qc.invalidateQueries({ queryKey: ['syllabi-stats'] })
+      qc.invalidateQueries({ queryKey: ['syllabus'] }); qc.invalidateQueries({ queryKey: ['md-catalog'] })
+    },
+    onError: (e) => setError((e as ApiError).message),
+  })
+
+  const openEdit = (d: SyllabusDetail) => {
+    const s = (v: number | string | null | undefined) => (v === null || v === undefined ? '' : String(v))
+    setEditId(d.id)
+    setEditForm({
+      title_fa: s(d.title_fa), title_en: s(d.title_en), course_code: s(d.course_code),
+      course_type: s(d.course_type), unit_theory: s(d.unit_theory), unit_practice: s(d.unit_practice),
+      hour_theory: s(d.hour_theory), hour_practice: s(d.hour_practice),
+      prerequisites: s(d.prerequisites), corequisites: s(d.corequisites),
+      general_goal: s(d.general_goal), evaluation: s(d.evaluation), references: s(d.references),
+    })
+    setEditTopics(d.topics.map((t) => ({
+      title: t.title, hours: s(t.hours), hours_practice: s(t.hours_practice),
+    })))
+    setOpenId(null); setEditOpen(true)
+  }
+
+  const numOrNull = (s: string) => (s.trim() ? Number(s) : null)
+
+  const saveEdit = () => {
+    if (!editId) return
+    if (!editForm.title_en.trim() && !editForm.title_fa.trim()) {
+      setError('عنوان انگلیسی (یا فارسی به‌عنوان جایگزین) لازم است.')
+      return
+    }
+    editSyllabus.mutate({
+      id: editId,
+      body: {
+        title_fa: editForm.title_fa.trim() || null, title_en: editForm.title_en.trim(),
+        course_code: editForm.course_code.trim() || null, course_type: editForm.course_type.trim() || null,
+        unit_theory: numOrNull(editForm.unit_theory), unit_practice: numOrNull(editForm.unit_practice),
+        hour_theory: numOrNull(editForm.hour_theory), hour_practice: numOrNull(editForm.hour_practice),
+        prerequisites: editForm.prerequisites.trim() || null, corequisites: editForm.corequisites.trim() || null,
+        general_goal: editForm.general_goal.trim() || null, evaluation: editForm.evaluation.trim() || null,
+        references: editForm.references.trim() || null,
+        topics: editTopics
+          .filter((t) => t.title.trim())
+          .map((t, i) => ({ seq: i + 1, title: t.title.trim(), hours: numOrNull(t.hours), hours_practice: numOrNull(t.hours_practice) })),
+      },
+    })
+  }
+
+  const moveTopic = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= editTopics.length) return
+    const next = [...editTopics]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    setEditTopics(next)
+  }
 
   const unitText = (r: SyllabusRow) => {
     const parts = []
@@ -202,6 +270,10 @@ export default function Syllabi() {
                 <span className="chip">واحد: {unitText(detail.data)}</span>
                 <span className="chip">ساعت: {hourText(detail.data)}</span>
                 <span className="chip small" dir="ltr">{detail.data.source_file}</span>
+                {canEdit && (
+                  <button className="btn primary sm" style={{ marginInlineStart: 'auto' }}
+                          onClick={() => openEdit(detail.data)}>ویرایش</button>
+                )}
               </div>
               {detail.data.general_goal && (
                 <p><b>هدف کلی:</b> {detail.data.general_goal}</p>
@@ -232,6 +304,113 @@ export default function Syllabi() {
               {detail.data.references && <p className="small"><b>منابع:</b> <span dir="auto">{detail.data.references}</span></p>}
             </>
           )}
+        </Modal>
+      )}
+
+      {editOpen && (
+        <Modal title="ویرایش سرفصل مصوب" wide onClose={() => setEditOpen(false)}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 220px' }}>
+              <label>عنوان فارسی</label>
+              <input value={editForm.title_fa} onChange={(e) => setEditForm({ ...editForm, title_fa: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 220px' }}>
+              <label>عنوان انگلیسی (کلید تطبیق)</label>
+              <input dir="ltr" value={editForm.title_en} onChange={(e) => setEditForm({ ...editForm, title_en: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 130px' }}>
+              <label>کد درس</label>
+              <input dir="ltr" value={editForm.course_code} onChange={(e) => setEditForm({ ...editForm, course_code: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 130px' }}>
+              <label>نوع درس</label>
+              <input value={editForm.course_type} onChange={(e) => setEditForm({ ...editForm, course_type: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 110px' }}>
+              <label>واحد نظری</label>
+              <input type="number" min={0} value={editForm.unit_theory} onChange={(e) => setEditForm({ ...editForm, unit_theory: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 110px' }}>
+              <label>واحد عملی</label>
+              <input type="number" min={0} value={editForm.unit_practice} onChange={(e) => setEditForm({ ...editForm, unit_practice: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 110px' }}>
+              <label>ساعت نظری</label>
+              <input type="number" min={0} value={editForm.hour_theory} onChange={(e) => setEditForm({ ...editForm, hour_theory: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 110px' }}>
+              <label>ساعت عملی</label>
+              <input type="number" min={0} value={editForm.hour_practice} onChange={(e) => setEditForm({ ...editForm, hour_practice: e.target.value })} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+            <div style={{ flex: '1 1 300px' }}>
+              <label>پیش‌نیازها</label>
+              <textarea rows={2} value={editForm.prerequisites} onChange={(e) => setEditForm({ ...editForm, prerequisites: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 300px' }}>
+              <label>هم‌نیازها</label>
+              <textarea rows={2} value={editForm.corequisites} onChange={(e) => setEditForm({ ...editForm, corequisites: e.target.value })} />
+            </div>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <label>هدف کلی درس</label>
+            <textarea rows={4} value={editForm.general_goal} onChange={(e) => setEditForm({ ...editForm, general_goal: e.target.value })} />
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+            <div style={{ flex: '1 1 300px' }}>
+              <label>روش ارزشیابی</label>
+              <textarea rows={2} value={editForm.evaluation} onChange={(e) => setEditForm({ ...editForm, evaluation: e.target.value })} />
+            </div>
+            <div style={{ flex: '1 1 300px' }}>
+              <label>منابع</label>
+              <textarea rows={2} dir="auto" value={editForm.references} onChange={(e) => setEditForm({ ...editForm, references: e.target.value })} />
+            </div>
+          </div>
+
+          <h4 style={{ margin: '14px 0 6px' }}>ریز محتوا / سرفصل‌ها ({fmtNumber(editTopics.length)})</h4>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr>
+                <th style={{ width: 44 }}>#</th><th>عنوان ریز محتوا</th>
+                <th style={{ width: 110 }}>ساعت نظری</th><th style={{ width: 110 }}>ساعت عملی</th>
+                <th style={{ width: 118 }}></th>
+              </tr></thead>
+              <tbody>
+                {editTopics.map((t, i) => (
+                  <tr key={i}>
+                    <td className="num">{fmtNumber(i + 1)}</td>
+                    <td><input value={t.title}
+                               onChange={(e) => setEditTopics(editTopics.map((x, k) => k === i ? { ...x, title: e.target.value } : x))} /></td>
+                    <td><input type="number" min={0} value={t.hours}
+                               onChange={(e) => setEditTopics(editTopics.map((x, k) => k === i ? { ...x, hours: e.target.value } : x))} /></td>
+                    <td><input type="number" min={0} value={t.hours_practice}
+                               onChange={(e) => setEditTopics(editTopics.map((x, k) => k === i ? { ...x, hours_practice: e.target.value } : x))} /></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn sm" title="انتقال به بالا" onClick={() => moveTopic(i, -1)}>▲</button>{' '}
+                      <button className="btn sm" title="انتقال به پایین" onClick={() => moveTopic(i, 1)}>▼</button>{' '}
+                      <button className="btn danger sm" title="حذف ردیف" onClick={() => setEditTopics(editTopics.filter((_, k) => k !== i))}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button className="btn sm" style={{ marginTop: 8 }}
+                  onClick={() => setEditTopics([...editTopics, { title: '', hours: '', hours_practice: '' }])}>
+            افزودن سرفصل
+          </button>
+
+          <div className="modal-foot">
+            <button className="btn primary" disabled={editSyllabus.isPending} onClick={saveEdit}>
+              {editSyllabus.isPending ? 'در حال ذخیره…' : 'ذخیره تغییرات'}
+            </button>
+            <button className="btn" onClick={() => setEditOpen(false)}>انصراف</button>
+          </div>
+          <p className="muted small">
+            ذخیره در سابقه ممیزی ثبت می‌شود و <code dir="ltr">updated_at</code> به‌روز می‌شود؛
+            سامانه‌های مصرف‌کننده با همگام‌سازی دلتایی (<code dir="ltr">since</code>) تغییر را می‌گیرند.
+          </p>
         </Modal>
       )}
 
