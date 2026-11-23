@@ -18,6 +18,7 @@ from app.common import statuses
 from app.common.db import utcnow
 from app.modules.identities.models import ExternalIdMapping
 from app.modules.integrations.models import SystemInstallation
+from app.modules.masterdata.models import SplitCourse, UniqueCourse
 from app.modules.masterdata.models import CourseSyllabus, CourseSyllabusTopic
 from app.modules.organizations.models import Organization
 from app.modules.persons.models import Person, PersonIdentifier
@@ -40,6 +41,7 @@ DOMAINS = [
     ("references", "اطلاعات پایه"),
     ("mappings", "نگاشت شناسه"),
     ("syllabi", "سرفصل دروس"),
+    ("chain", "زنجیره درس"),
 ]
 
 
@@ -567,6 +569,85 @@ def _run_syllabus_checks(db: Session, tenant_id, checks: list[_Check]) -> None:
     checks.append(c)
 
 
+def _run_chain_checks(db: Session, tenant_id, checks: list[_Check]) -> None:
+    """بررسی‌های زنجیره درس — حوزه chain: درس یکتا ← درس تفکیکی (۱ تا ۳) ← سرفصل مصوب."""
+    ucs = list(db.execute(select(UniqueCourse).where(
+        UniqueCourse.tenant_id == tenant_id)).scalars().all())
+    scs = list(db.execute(select(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id)).scalars().all())
+    if not ucs and not scs:
+        return
+    sp_count: dict = {}
+    for sc in scs:
+        sp_count[sc.unique_course_id] = sp_count.get(sc.unique_course_id, 0) + 1
+    syl_count: dict = dict(db.execute(
+        select(SplitCourse.unique_course_id, func.count()).join(
+            CourseSyllabus, CourseSyllabus.split_course_id == SplitCourse.id).where(
+            SplitCourse.tenant_id == tenant_id).group_by(SplitCourse.unique_course_id)).all())
+
+    # ۳۰) پوشش: درس یکتای بدون هیچ درس تفکیکی — زنجیره از رأس قطع است
+    c = _Check("chain_unique_without_split", "coverage", "chain",
+               "درس یکتای بدون درس تفکیکی",
+               "high",
+               "هر درس یکتا باید ۱ تا ۳ درس تفکیکی (تفکیک با سال یا مجموعه پیوسته/ناپیوسته) داشته باشد؛ بدون تفکیکی، این درس در نیمسال‌ها و نظرسنجی‌ها قابل استفاده نیست.",
+               "داده درس‌یار۳۶۰ کامل واکشی نشده یا درس جدید دستی ثبت شده و تفکیکی‌هایش هنوز ساخته نشده‌اند.",
+               "درس را در صفحه «درس‌های تفکیکی» با سال/مجموعه اضافه کنید یا ایمپورت درس‌یار۳۶۰ را مجدد اجرا کنید.")
+    c.set_total(len(ucs))
+    for u in ucs:
+        if sp_count.get(u.id, 0) == 0:
+            c.hit({"unique_course_code": u.code, "title": u.title_fa, "section": u.section or "—"})
+    checks.append(c)
+
+    # ۳۱) اعتبار: تعداد درس تفکیکی خارج از ۱ تا ۳
+    c = _Check("chain_split_count_invalid", "validity", "chain",
+               "تعداد درس تفکیکی خارج از قاعده ۱ تا ۳",
+               "medium",
+               "قاعده کسب‌وکار: هر درس یکتا یک یا سه درس تفکیکی دارد (دو تفکیکی یعنی یکی از سال/مجموعه‌ها هنوز وارد نشده).",
+               "ایمپورت ناقص از درس‌یار۳۶۰ یا حذف دستی یکی از تفکیکی‌ها.",
+               "ردیف‌های جاافتاده منبع را با ایمپورت idempotent درس‌یار۳۶۰ تکمیل کنید.")
+    c.set_total(len(ucs))
+    for u in ucs:
+        n = sp_count.get(u.id, 0)
+        if n not in (1, 3):
+            c.hit({"unique_course_code": u.code, "title": u.title_fa,
+                   "split_count": n, "rule": "۱ یا ۳ درس تفکیکی"})
+    checks.append(c)
+
+    # ۳۲) پوشش: درس تفکیکی بدون سرفصل مصوب
+    c = _Check("chain_split_without_syllabus", "coverage", "chain",
+               "درس تفکیکی بدون سرفصل مصوب",
+               "high",
+               "هر درس تفکیکی باید سرفصل‌های مصوب خودش را داشته باشد؛ بدون سرفصل، برنامه‌ریزی و نظرسنجی با محتوای درس هم‌خوان نمی‌شود.",
+               "سند سرفصل این نمونه (سال/مجموعه) هنوز وارد نشده یا تطبیق عنوان در اتصال خودکار انجام نشده.",
+               "سند سرفصل همان سال/مجموعه را ایمپورت و در فرم سرفصل، درس تفکیکی را دستی متصل کنید.")
+    c.set_total(len(scs))
+    uc_map = {u.id: u for u in ucs}
+    for sc in scs:
+        if syl_count.get(sc.unique_course_id, 0) == 0:
+            uc = uc_map.get(sc.unique_course_id)
+            c.hit({"split_title": sc.title, "year": sc.year_label or "—",
+                   "cohort": sc.cohort_set or "—",
+                   "unique_course_code": uc.code if uc else "—",
+                   "unique_course_title": uc.title_fa if uc else "—"})
+    checks.append(c)
+
+    # ۳۳) انسجام: سرفصل بدون پیوند به درس تفکیکی
+    all_syl = list(db.execute(select(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id, CourseSyllabus.status == "active")).scalars().all())
+    orphan = [s for s in all_syl if s.split_course_id is None]
+    c = _Check("chain_syllabus_orphan", "consistency", "chain",
+               "سرفصل بدون پیوند به درس تفکیکی",
+               "medium",
+               "سرفصل‌های مصوب باید از طریق درس تفکیکی به درس یکتا متصل باشند؛ سرفصل بی‌پیوند در زنجیره برنامه‌ریزی دیده نمی‌شود.",
+               "عنوان سند با عنوان درس‌یار۳۶۰ هم‌خوان نیست (مثلاً «ریاضیات گسسته» در ناپیوسته) یا سند دستی است.",
+               "در فرم ویرایش سرفصل، «درس تفکیکی» را از فهرست انتخاب کنید.")
+    c.set_total(len(all_syl))
+    for s in orphan:
+        c.hit({"syllabus_id": str(s.id), "title_fa": s.title_fa or "—",
+               "title_en": s.title_en, "source_set": s.source_set})
+    checks.append(c)
+
+
 def run_overview(db: Session, tenant_id) -> dict:
     """داشبورد تجمیعی کیفیت: امتیاز کل، ابعاد، حوزه‌ها و بررسی‌ها با ردیف‌های drill-down."""
     checks: list[_Check] = []
@@ -575,6 +656,7 @@ def run_overview(db: Session, tenant_id) -> dict:
     _run_reference_checks(db, tenant_id, checks)
     _run_mapping_checks(db, tenant_id, checks)
     _run_syllabus_checks(db, tenant_id, checks)
+    _run_chain_checks(db, tenant_id, checks)
 
     outs = [c.out() for c in checks]
     wsum = sum(WEIGHTS[c["severity"]] for c in outs)

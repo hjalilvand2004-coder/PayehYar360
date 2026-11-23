@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import JSON, String, Text, UniqueConstraint
+from sqlalchemy import JSON, ForeignKeyConstraint, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -123,6 +123,8 @@ class CourseSyllabus(Base, IdMixin, TimestampMixin):
     source: Mapped[str] = mapped_column(String(40), default="manual", nullable=False)
     extra: Mapped[dict | None] = mapped_column(JSON_V, nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)            # متن کامل استخراج‌شده
+    # زنجیره درس: سرفصل متعلق به یک «درس تفکیکی» است (درس یکتا از طریق آن قابل دستیابی است)
+    split_course_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 
 
 class CourseSyllabusTopic(Base, IdMixin, TimestampMixin):
@@ -135,3 +137,62 @@ class CourseSyllabusTopic(Base, IdMixin, TimestampMixin):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     hours: Mapped[int | None] = mapped_column(nullable=True)            # زمان نظری
     hours_practice: Mapped[int | None] = mapped_column(nullable=True)   # زمان عملی
+
+
+class UniqueCourse(Base, IdMixin, TimestampMixin):
+    """درس یکتا — رأس زنجیره درس؛ کد یکتا عیناً از سامانه درس‌یار۳۶۰ (بدون پیشوند).
+
+    قاعده کسب‌وکار: هر درس یکتا ۱ تا ۳ «درس تفکیکی» دارد (تفکیک با سال یا مجموعه
+    پیوسته/ناپیوسته) و هر درس تفکیکی سرفصل‌های مصوب خودش را دارد.
+    """
+    __tablename__ = "md_unique_courses"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_md_unique_course_code"),
+        UniqueConstraint("tenant_id", "id", name="uq_md_unique_courses_tenant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    code: Mapped[str] = mapped_column(String(60), nullable=False)              # کد یکتا مثل 1044
+    title_fa: Mapped[str] = mapped_column(String(300), nullable=False)
+    title_en: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    section: Mapped[str | None] = mapped_column(String(80), nullable=True)     # بخش: پایه/اصلی/تخصصی/اختیاری/…
+    unit_theory: Mapped[int | None] = mapped_column(nullable=True)
+    unit_practice: Mapped[int | None] = mapped_column(nullable=True)
+    capacity: Mapped[int | None] = mapped_column(nullable=True)                # ظرفیت برآوردی
+    prerequisite: Mapped[str | None] = mapped_column(Text, nullable=True)      # پیش‌نیاز خام از منبع
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    source: Mapped[str] = mapped_column(String(40), default="manual", nullable=False)  # darsyar360/manual
+    extra: Mapped[dict | None] = mapped_column(JSON_V, nullable=True)
+
+
+class SplitCourse(Base, IdMixin, TimestampMixin):
+    """درس تفکیکی — نمونه‌ی اجرایی یک درس یکتا؛ حلقه‌ی واسط زنجیره درس.
+
+    یکتایی بر (درس یکتا + سال + مجموعه)؛ عنوان می‌تواند با عنوان درس یکتا
+    کمی متفاوت باشد (مثل «ریاضیات گسسته» در ناپیوسته).
+    """
+    __tablename__ = "md_split_courses"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "unique_course_id"], ["md_unique_courses.tenant_id", "md_unique_courses.id"],
+            name="fk_md_split_course_unique", ondelete="CASCADE",
+        ),
+        UniqueConstraint("tenant_id", "unique_course_id", "year_label", "cohort_set",
+                         name="uq_md_split_course_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    unique_course_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    code: Mapped[str | None] = mapped_column(String(60), nullable=True)        # کد ردیف در منبع
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    year_label: Mapped[str | None] = mapped_column(String(30), nullable=True)  # 1403 / 1394 / خالی
+    cohort_set: Mapped[str | None] = mapped_column(String(30), nullable=True)  # پیوسته / ناپیوسته
+    unit_theory: Mapped[int | None] = mapped_column(nullable=True)
+    unit_practice: Mapped[int | None] = mapped_column(nullable=True)
+    capacity: Mapped[int | None] = mapped_column(nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    source: Mapped[str] = mapped_column(String(40), default="manual", nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(60), nullable=True)  # شناسه ردیف در منبع
+    extra: Mapped[dict | None] = mapped_column(JSON_V, nullable=True)

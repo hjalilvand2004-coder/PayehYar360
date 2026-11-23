@@ -319,6 +319,21 @@ def seed_demo(db: Session) -> None:
         for ctype, value in contacts:
             add_contact(db, tenant.id, actor, person["id"], {"type": ctype, "value": value})
 
+    # زنجیره درس: درس‌های یکتا + درس‌های تفکیکی واقعی از درس‌یار۳۶۰ (فقط بار اول)
+    if db.execute(select(func.count()).select_from(md_service.UniqueCourse)).scalar() == 0:
+        rows_path = Path(__file__).parent / "seed_darsyar_courses.json"
+        if rows_path.exists():
+            rows = json.loads(rows_path.read_text(encoding="utf-8"))
+            stats = md_service.upsert_darsyar_courses(db, tenant.id, actor, rows)
+            log.info("دروس درس‌یار۳۶۰ seed شد: %s", stats)
+        else:
+            log.warning("seed_darsyar_courses.json یافت نشد — زنجیره درس خالی ماند.")
+
     db.commit()
     log.info("Demo seed done (tenant=%s, installations=%d)", tenant.code, len(installs))
     _seed_syllabi(db)
+    # پس از ساخت سرفصل‌ها: اتصال خودکار سرفصل‌ها به درس‌های تفکیکی (تطبیق عنوان)
+    db2_link = md_service.link_syllabi_to_split_courses(db, tenant.id)
+    if db2_link:
+        db.commit()
+        log.info("%d سرفصل به درس تفکیکی متصل شد.", db2_link)

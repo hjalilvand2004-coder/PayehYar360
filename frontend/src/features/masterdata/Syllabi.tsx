@@ -5,6 +5,9 @@ import { Empty, ErrorBox, Loading, Modal, PageHead, ConfirmInline } from '../../
 import { fmtNumber } from '../../shared/format'
 import { useAuth } from '../../auth/AuthContext'
 
+interface SplitRef { id: string; code: string | null; title: string; year_label: string | null; cohort_set: string | null }
+interface UniqueRef { id: string; code: string; title_fa: string; section: string | null }
+
 interface SyllabusRow {
   id: string
   source_set: string
@@ -21,6 +24,8 @@ interface SyllabusRow {
   status: string
   topics_count: number
   updated_at_jalali: string
+  split_course?: SplitRef | null
+  unique_course?: UniqueRef | null
 }
 
 interface SyllabusDetail extends SyllabusRow {
@@ -56,6 +61,7 @@ export default function Syllabi() {
   const [importOpen, setImportOpen] = useState(false)
   const [rawJson, setRawJson] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
+  const [splitFilter, setSplitFilter] = useState<string>(() => new URLSearchParams(location.search).get('split') || '')
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<Record<string, string>>({})
@@ -67,9 +73,26 @@ export default function Syllabi() {
   })
 
   const items = useQuery({
-    queryKey: ['syllabi', search, setFilter],
+    queryKey: ['syllabi', search, setFilter, splitFilter],
     queryFn: () => api<{ items: SyllabusRow[] }>(
-      `/api/v1/masterdata/syllabi?search=${encodeURIComponent(search)}&source_set=${encodeURIComponent(setFilter)}`),
+      `/api/v1/masterdata/syllabi?search=${encodeURIComponent(search)}&source_set=${encodeURIComponent(setFilter)}` +
+      (splitFilter ? `&split_course_id=${encodeURIComponent(splitFilter)}` : '')),
+  })
+
+  // عنوان فیلتر فعال (پیگیری از صفحه درس‌های تفکیکی)
+  const splitFilterInfo = useQuery({
+    queryKey: ['split-course', splitFilter],
+    queryFn: () => api<{ title: string; year_label: string | null; cohort_set: string | null; unique_course: { title_fa: string; code: string } | null }>(
+      `/api/v1/masterdata/split-courses/${splitFilter}`),
+    enabled: !!splitFilter,
+  })
+
+  // فهرست درس‌های تفکیکی برای انتخاب در فرم ویرایش
+  const editSplits = useQuery({
+    queryKey: ['split-courses', 'for-edit'],
+    queryFn: () => api<{ items: Array<{ id: string; title: string; year_label: string | null; cohort_set: string | null; unique_course: { code: string; title_fa: string } | null }> }>(
+      '/api/v1/masterdata/split-courses?limit=1000'),
+    enabled: editOpen,
   })
 
   const detail = useQuery({
@@ -126,6 +149,7 @@ export default function Syllabi() {
       hour_theory: s(d.hour_theory), hour_practice: s(d.hour_practice),
       prerequisites: s(d.prerequisites), corequisites: s(d.corequisites),
       general_goal: s(d.general_goal), evaluation: s(d.evaluation), references: s(d.references),
+      split_course_id: d.split_course?.id || '',
     })
     setEditTopics(d.topics.map((t) => ({
       title: t.title, hours: s(t.hours), hours_practice: s(t.hours_practice),
@@ -151,6 +175,7 @@ export default function Syllabi() {
         prerequisites: editForm.prerequisites.trim() || null, corequisites: editForm.corequisites.trim() || null,
         general_goal: editForm.general_goal.trim() || null, evaluation: editForm.evaluation.trim() || null,
         references: editForm.references.trim() || null,
+        split_course_id: editForm.split_course_id || null,
         topics: editTopics
           .filter((t) => t.title.trim())
           .map((t, i) => ({ seq: i + 1, title: t.title.trim(), hours: numOrNull(t.hours), hours_practice: numOrNull(t.hours_practice) })),
@@ -225,6 +250,12 @@ export default function Syllabi() {
               {SET_BADGE[s]}
             </button>
           ))}
+          {splitFilter && (
+            <span className="chip ok" title="فیلتر از صفحه درس‌های تفکیکی">
+              🧩 {splitFilterInfo.data ? `${splitFilterInfo.data.unique_course?.title_fa || ''} → ${splitFilterInfo.data.title}` : 'درس تفکیکی'}
+              <button className="btn ghost sm" onClick={() => setSplitFilter('')}>✕</button>
+            </span>
+          )}
           {setFilter && (
             <button className="btn danger sm" title="حذف کل سندهای این مجموعه برای ایمپورت مجدد"
                     onClick={() => setDeleteOpen(true)}>حذف مجموعه</button>
@@ -273,6 +304,16 @@ export default function Syllabi() {
                 {canEdit && (
                   <button className="btn primary sm" style={{ marginInlineStart: 'auto' }}
                           onClick={() => openEdit(detail.data)}>ویرایش</button>
+                )}
+              </div>
+              <div className="small" style={{ marginBottom: 10 }}>
+                {detail.data.unique_course ? (
+                  <><b>زنجیره درس:</b> 🎯 {detail.data.unique_course.title_fa} (<span className="num">{detail.data.unique_course.code}</span>)
+                    {' → '}🧩 {detail.data.split_course?.title}
+                    {detail.data.split_course?.year_label ? ` — سال ${fmtNumber(Number(detail.data.split_course.year_label))}` : ''}
+                    {detail.data.split_course?.cohort_set ? ` — ${detail.data.split_course.cohort_set}` : ''}</>
+                ) : (
+                  <span className="muted">این سرفصل هنوز به زنجیره درس متصل نشده — در فرم ویرایش، «درس تفکیکی» را انتخاب کنید.</span>
                 )}
               </div>
               {detail.data.general_goal && (
@@ -366,6 +407,20 @@ export default function Syllabi() {
               <label>منابع</label>
               <textarea rows={2} dir="auto" value={editForm.references} onChange={(e) => setEditForm({ ...editForm, references: e.target.value })} />
             </div>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <label>درس تفکیکی متصل (زنجیره درس: درس یکتا ← تفکیکی ← سرفصل)</label>
+            <select value={editForm.split_course_id} onChange={(e) => setEditForm({ ...editForm, split_course_id: e.target.value })}>
+              <option value="">— بدون پیوند —</option>
+              {(editSplits.data?.items || []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.unique_course ? `${s.unique_course.code} — ${s.unique_course.title_fa}` : s.title}
+                  {' → '}{s.year_label ? `سال ${s.year_label}` : 'بدون سال'}{s.cohort_set ? ` — ${s.cohort_set}` : ''}
+                  {s.title !== s.unique_course?.title_fa ? ` — (${s.title})` : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
           <h4 style={{ margin: '14px 0 6px' }}>ریز محتوا / سرفصل‌ها ({fmtNumber(editTopics.length)})</h4>

@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.common import statuses
@@ -20,7 +20,8 @@ from app.core.errors import conflict, forbidden, not_found, unauthorized
 from app.core.security import Actor
 from app.modules.organizations.models import Organization
 from app.modules.masterdata.models import (Classroom, CourseSyllabus, CourseSyllabusTopic,
-                                           FetchLog, Instructor, ServiceClient)
+                                           FetchLog, Instructor, ServiceClient, SplitCourse,
+                                           UniqueCourse)
 from app.modules.references.models import ReferenceItem, ReferenceSet
 
 # ---------- دامنه‌های سرویس‌دهی به سایر سامانه‌ها ----------
@@ -54,15 +55,37 @@ def _classroom_items(db: Session, tenant_id, since: str | None = None) -> list[d
             for c in db.execute(stmt.order_by(Classroom.name)).scalars().all()]
 
 
-def _course_items(db: Session, tenant_id) -> list[dict]:
-    sets = {str(s.id): s.code for s in db.execute(select(ReferenceSet).where(
-        ReferenceSet.tenant_id == tenant_id)).scalars().all()}
-    return [{"set": sets.get(str(i.set_id), ""), "code": i.code, "title": i.title,
-             "attrs": i.attrs or {}, "status": i.status, "updated_at": i.updated_at}
-            for i in db.execute(select(ReferenceItem).where(
-                ReferenceItem.tenant_id == tenant_id,
-                ReferenceItem.set_id.in_([uuid.UUID(sid) for sid, code in sets.items() if code == "unique_courses"]))
-            ).scalars().all()]
+def _unique_course_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:
+    """درس‌های یکتا برای سایر سامانه‌ها — کد یکتا کلید مصرف‌کننده است."""
+    stmt = select(UniqueCourse).where(UniqueCourse.tenant_id == tenant_id)
+    if since:
+        stmt = stmt.where(UniqueCourse.updated_at > since)
+    return [{"set": "unique_courses", "code": u.code, "title": u.title_fa,
+             "parent_code": None,
+             "attrs": {"section": u.section, "unit_theory": u.unit_theory,
+                       "unit_practice": u.unit_practice, "capacity": u.capacity,
+                       "prerequisite": u.prerequisite, "source": u.source},
+             "status": u.status, "updated_at": u.updated_at}
+            for u in db.execute(stmt.order_by(UniqueCourse.code)).scalars().all()]
+
+
+def _split_course_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:
+    """درس‌های تفکیکی برای سایر سامانه‌ها — کلید: (کد درس یکتا + سال + مجموعه)."""
+    stmt = select(SplitCourse, UniqueCourse).join(
+        UniqueCourse, (UniqueCourse.id == SplitCourse.unique_course_id) &
+        (UniqueCourse.tenant_id == SplitCourse.tenant_id)).where(
+        SplitCourse.tenant_id == tenant_id)
+    if since:
+        stmt = stmt.where(SplitCourse.updated_at > since)
+    return [{"set": "split_courses", "code": sc.code, "title": sc.title,
+             "unique_course_code": uc.code, "unique_course_title": uc.title_fa,
+             "parent_code": uc.code,
+             "attrs": {"year_label": sc.year_label, "cohort_set": sc.cohort_set,
+                       "unit_theory": sc.unit_theory, "unit_practice": sc.unit_practice,
+                       "capacity": sc.capacity, "external_id": sc.external_id,
+                       "source": sc.source},
+             "status": sc.status, "updated_at": sc.updated_at}
+            for sc, uc in db.execute(stmt.order_by(uc.code, sc.year_label.nullslast())).all()]
 
 
 def _ref_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:
@@ -139,7 +162,9 @@ def fetch_domain(db: Session, client: ServiceClient, domain: str, since: str | N
     elif domain == "organizations":
         items = _org_items(db, client.tenant_id)
     elif domain == "unique-courses":
-        items = _course_items(db, client.tenant_id)
+        items = _unique_course_items(db, client.tenant_id, since)
+    elif domain == "split-courses":
+        items = _split_course_items(db, client.tenant_id, since)
     elif domain == "course-syllabi":
         items = _syllabus_items(db, client.tenant_id, since)
     else:
@@ -160,7 +185,8 @@ SERVICE_DOMAINS: dict[str, tuple[str, str]] = {
     "instructors": ("اساتید", "masterdata"),
     "classrooms": ("کلاس‌ها و سالن‌ها", "masterdata"),
     "organizations": ("ساختار سازمانی", "core"),
-    "unique-courses": ("درس‌های یکتا", "references"),
+    "unique-courses": ("درس‌های یکتا", "masterdata"),
+    "split-courses": ("درس‌های تفکیکی", "masterdata"),
     "course-syllabi": ("سرفصل‌های مصوب دروس", "masterdata"),
     "reference-items": ("آیتم‌های مرجع", "references"),
 }
@@ -488,19 +514,17 @@ def catalog(db: Session, tenant_id) -> dict:
         Classroom.tenant_id == tenant_id, Classroom.status == "active")).scalar() or 0
     org_count = db.execute(select(func.count()).select_from(Organization).where(
         Organization.tenant_id == tenant_id)).scalar() or 0
-    sets = {str(s.id): s.code for s in db.execute(select(ReferenceSet).where(
-        ReferenceSet.tenant_id == tenant_id)).scalars().all()}
-    course_ids = [uuid.UUID(sid) for sid, code in sets.items() if code == "unique_courses"]
-    course_count = 0
-    if course_ids:
-        course_count = db.execute(select(func.count()).select_from(ReferenceItem).where(
-            ReferenceItem.tenant_id == tenant_id, ReferenceItem.set_id.in_(course_ids))).scalar() or 0
+    uc_count = db.execute(select(func.count()).select_from(UniqueCourse).where(
+        UniqueCourse.tenant_id == tenant_id)).scalar() or 0
+    sc_count = db.execute(select(func.count()).select_from(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id)).scalar() or 0
     ref_count = db.execute(select(func.count()).select_from(ReferenceItem).where(
         ReferenceItem.tenant_id == tenant_id)).scalar() or 0
     syllabi_count = db.execute(select(func.count()).select_from(CourseSyllabus).where(
         CourseSyllabus.tenant_id == tenant_id, CourseSyllabus.status == "active")).scalar() or 0
     counts = {"instructors": instructors_count, "classrooms": classrooms_count,
-              "organizations": org_count, "unique-courses": course_count,
+              "organizations": org_count, "unique-courses": uc_count,
+              "split-courses": sc_count,
               "course-syllabi": syllabi_count, "reference-items": ref_count}
     items = []
     for domain, (title, _prov) in SERVICE_DOMAINS.items():
@@ -650,8 +674,34 @@ def import_syllabi(db: Session, tenant_id, actor: Actor, items: list[dict],
     return {"created": created, "updated": updated, "total": total, "skipped": skipped}
 
 
+def _chain_map(db: Session, tenant_id, sc_ids: set) -> dict:
+    """نقشه زنجیره درس برای شناسه‌های درس تفکیکی: {split_id: (split, unique)}."""
+    out = {}
+    if not sc_ids:
+        return out
+    scs = db.execute(select(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id, SplitCourse.id.in_(sc_ids))).scalars().all()
+    uc_ids = {sc.unique_course_id for sc in scs}
+    ucs = {u.id: u for u in db.execute(select(UniqueCourse).where(
+        UniqueCourse.tenant_id == tenant_id, UniqueCourse.id.in_(uc_ids))).scalars().all()} if uc_ids else {}
+    for sc in scs:
+        out[sc.id] = (sc, ucs.get(sc.unique_course_id))
+    return out
+
+
+def _chain_out(sc: SplitCourse | None, uc: UniqueCourse | None) -> dict:
+    if sc is None:
+        return {"split_course": None, "unique_course": None}
+    return {
+        "split_course": {"id": str(sc.id), "code": sc.code, "title": sc.title,
+                         "year_label": sc.year_label, "cohort_set": sc.cohort_set},
+        "unique_course": ({"id": str(uc.id), "code": uc.code, "title_fa": uc.title_fa,
+                           "section": uc.section} if uc else None),
+    }
+
+
 def list_syllabi(db: Session, tenant_id, search: str | None, source_set: str | None,
-                 limit: int = 500) -> list[dict]:
+                 split_course_id: str | None = None, limit: int = 500) -> list[dict]:
     stmt = select(CourseSyllabus).where(CourseSyllabus.tenant_id == tenant_id)
     if search:
         like = f"%{search.strip()}%"
@@ -660,20 +710,30 @@ def list_syllabi(db: Session, tenant_id, search: str | None, source_set: str | N
                           CourseSyllabus.course_code.ilike(like))
     if source_set:
         stmt = stmt.where(CourseSyllabus.source_set == source_set)
+    if split_course_id:
+        try:
+            stmt = stmt.where(CourseSyllabus.split_course_id == uuid.UUID(str(split_course_id)))
+        except ValueError:
+            raise not_found("شناسه درس تفکیکی نامعتبر است.")
     rows = db.execute(stmt.order_by(CourseSyllabus.source_set, CourseSyllabus.title_en)
                       .limit(limit)).scalars().all()
     tcount = dict(db.execute(
         select(CourseSyllabusTopic.syllabus_id, func.count()).group_by(
             CourseSyllabusTopic.syllabus_id)).all())
-    return [{"id": str(s.id), "source_set": s.source_set, "source_file": s.source_file,
-             "title_fa": s.title_fa, "title_en": s.title_en, "course_code": s.course_code,
-             "course_type": s.course_type, "unit_theory": s.unit_theory,
-             "unit_practice": s.unit_practice, "hour_theory": s.hour_theory,
-             "hour_practice": s.hour_practice, "has_text": s.has_text,
-             "status": s.status, "topics_count": tcount.get(s.id, 0),
-             "updated_at": s.updated_at,
-             "updated_at_jalali": jalali_str(s.updated_at, with_time=True)}
-            for s in rows]
+    chain = _chain_map(db, tenant_id, {s.split_course_id for s in rows if s.split_course_id})
+    out = []
+    for s in rows:
+        sc, uc = chain.get(s.split_course_id, (None, None)) if s.split_course_id else (None, None)
+        out.append({"id": str(s.id), "source_set": s.source_set, "source_file": s.source_file,
+                    "title_fa": s.title_fa, "title_en": s.title_en, "course_code": s.course_code,
+                    "course_type": s.course_type, "unit_theory": s.unit_theory,
+                    "unit_practice": s.unit_practice, "hour_theory": s.hour_theory,
+                    "hour_practice": s.hour_practice, "has_text": s.has_text,
+                    "status": s.status, "topics_count": tcount.get(s.id, 0),
+                    "updated_at": s.updated_at,
+                    "updated_at_jalali": jalali_str(s.updated_at, with_time=True),
+                    **_chain_out(sc, uc)})
+    return out
 
 
 def get_syllabus(db: Session, tenant_id, syllabus_id) -> dict:
@@ -683,6 +743,8 @@ def get_syllabus(db: Session, tenant_id, syllabus_id) -> dict:
         raise not_found("سرفصل یافت نشد.")
     topics = db.execute(select(CourseSyllabusTopic).where(
         CourseSyllabusTopic.syllabus_id == row.id).order_by(CourseSyllabusTopic.seq)).scalars().all()
+    chain = _chain_out(*_chain_map(db, tenant_id, {row.split_course_id}).get(row.split_course_id, (None, None))
+                       if row.split_course_id else (None, None))
     return {
         "id": str(row.id), "source_set": row.source_set, "source_file": row.source_file,
         "title_fa": row.title_fa, "title_en": row.title_en, "course_code": row.course_code,
@@ -696,6 +758,7 @@ def get_syllabus(db: Session, tenant_id, syllabus_id) -> dict:
         "topics": [{"seq": t.seq, "title": t.title, "hours": t.hours,
                     "hours_practice": t.hours_practice} for t in topics],
         "updated_at": row.updated_at, "updated_at_jalali": jalali_str(row.updated_at, with_time=True),
+        **chain,
     }
 
 
@@ -770,6 +833,21 @@ def update_syllabus(db: Session, tenant_id, actor: Actor, syllabus_id, data: dic
         if v != getattr(row, k):
             setattr(row, k, v)
             changed.append(k)
+    if "split_course_id" in data:
+        sc_val = data.get("split_course_id")
+        if sc_val in (None, "", "null"):
+            if row.split_course_id is not None:
+                row.split_course_id = None
+                changed.append("split_course_id")
+        else:
+            sc = db.execute(select(SplitCourse).where(
+                SplitCourse.tenant_id == tenant_id,
+                SplitCourse.id == _as_uuid(sc_val))).scalar_one_or_none()
+            if sc is None:
+                raise not_found("درس تفکیکی یافت نشد.")
+            if row.split_course_id != sc.id:
+                row.split_course_id = sc.id
+                changed.append("split_course_id")
     if not (str(data.get("title_en") or "").strip() or row.title_en or "").strip():
         raise conflict("SYLLABUS_TITLE_REQUIRED", "عنوان انگلیسی خالی قابل ذخیره نیست — کلید تطبیق سرفصل است.")
     if data.get("topics") is not None:
@@ -795,6 +873,481 @@ def update_syllabus(db: Session, tenant_id, actor: Actor, syllabus_id, data: dic
                  before, after, request=request,
                  note=f"ویرایش سرفصل مصوب — فیلدها: {', '.join(changed)}")
     return after
+
+
+# ---------- زنجیره درس: درس یکتا ← درس تفکیکی ← سرفصل مصوب ----------
+# قاعده کسب‌وکار: هر درس یکتا ۱ تا ۳ درس تفکیکی دارد (تفکیک با سال یا مجموعه
+# پیوسته/ناپیوسته) و هر درس تفکیکی سرفصل‌های مصوب خودش را دارد.
+
+UC_FIELDS = ("code", "title_fa", "title_en", "section", "unit_theory", "unit_practice",
+             "capacity", "prerequisite", "status")
+SC_FIELDS = ("code", "title", "year_label", "cohort_set", "unit_theory", "unit_practice",
+             "capacity", "status")
+CHAIN_OK_COUNTS = (1, 3)
+
+
+def _as_uuid(v) -> uuid.UUID | None:
+    """تبدیل امن به UUID برای مقایسه با ستون‌های شناسه؛ نامعتبر → None."""
+    try:
+        return uuid.UUID(str(v))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def _norm_title(v) -> str:
+    """نرمال‌سازی عنوان برای تطبیق زنجیره: یکدست‌سازی نیم‌فاصله و فاصله‌ها."""
+    s = str(v or "").replace("\u200c", " ").replace("ي", "ی").replace("ك", "ک")
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _uc_out(db: Session, tenant_id, row: UniqueCourse, counts: dict | None = None) -> dict:
+    if counts is None:
+        counts = _uc_counts(db, tenant_id, [row.id])
+    sp, sy = counts.get(str(row.id), (0, 0))
+    return {"id": str(row.id), "code": row.code, "title_fa": row.title_fa, "title_en": row.title_en,
+            "section": row.section, "unit_theory": row.unit_theory, "unit_practice": row.unit_practice,
+            "capacity": row.capacity, "prerequisite": row.prerequisite, "status": row.status,
+            "source": row.source, "extra": row.extra or {},
+            "split_count": sp, "syllabi_count": sy,
+            "chain_ok": sp in CHAIN_OK_COUNTS,
+            "updated_at": row.updated_at,
+            "updated_at_jalali": jalali_str(row.updated_at, with_time=True)}
+
+
+def _uc_counts(db: Session, tenant_id, uc_ids: list) -> dict:
+    """برای هر درس یکتا: (تعداد درس تفکیکی، تعداد سرفصل‌های متصل به تفکیکی‌ها)."""
+    if not uc_ids:
+        return {}
+    ids = list(uc_ids)
+    sp = dict(db.execute(
+        select(SplitCourse.unique_course_id, func.count()).where(
+            SplitCourse.tenant_id == tenant_id,
+            SplitCourse.unique_course_id.in_(ids)).group_by(SplitCourse.unique_course_id)).all())
+    sy_rows = db.execute(
+        select(SplitCourse.unique_course_id, func.count()).join(
+            CourseSyllabus, CourseSyllabus.split_course_id == SplitCourse.id).where(
+            SplitCourse.tenant_id == tenant_id,
+            SplitCourse.unique_course_id.in_(ids)).group_by(SplitCourse.unique_course_id)).all()
+    sy = dict(sy_rows)
+    return {str(k): (n, sy.get(k, 0)) for k, n in sp.items()} | \
+           {str(k): (0, 0) for k in ids if k not in sp}
+
+
+def list_unique_courses(db: Session, tenant_id, search: str | None = None,
+                        section: str | None = None, status: str | None = None,
+                        limit: int = 500, offset: int = 0) -> dict:
+    stmt = select(UniqueCourse).where(UniqueCourse.tenant_id == tenant_id)
+    if search:
+        like = f"%{search.strip()}%"
+        stmt = stmt.where(UniqueCourse.title_fa.ilike(like) |
+                          UniqueCourse.title_en.ilike(like) |
+                          UniqueCourse.code.ilike(like))
+    if section:
+        stmt = stmt.where(UniqueCourse.section == section)
+    if status:
+        stmt = stmt.where(UniqueCourse.status == status)
+    total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
+    rows = db.execute(stmt.order_by(UniqueCourse.section, UniqueCourse.code)
+                      .limit(limit).offset(offset)).scalars().all()
+    counts = _uc_counts(db, tenant_id, [r.id for r in rows])
+    return {"total": total, "items": [_uc_out(db, tenant_id, r, counts) for r in rows]}
+
+
+def get_unique_course(db: Session, tenant_id, uc_id) -> dict:
+    row = db.execute(select(UniqueCourse).where(
+        UniqueCourse.tenant_id == tenant_id, UniqueCourse.id == uc_id)).scalar_one_or_none()
+    if row is None:
+        raise not_found("درس یکتا یافت نشد.")
+    out = _uc_out(db, tenant_id, row)
+    scs = db.execute(select(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id, SplitCourse.unique_course_id == row.id)
+        .order_by(SplitCourse.year_label.nullslast(), SplitCourse.cohort_set)).scalars().all()
+    sc_ids = [sc.id for sc in scs]
+    syc = dict(db.execute(
+        select(CourseSyllabus.split_course_id, func.count()).where(
+            CourseSyllabus.split_course_id.in_(sc_ids)).group_by(
+            CourseSyllabus.split_course_id)).all()) if sc_ids else {}
+    out["split_courses"] = [{"id": str(sc.id), "code": sc.code, "title": sc.title,
+                             "year_label": sc.year_label, "cohort_set": sc.cohort_set,
+                             "unit_theory": sc.unit_theory, "unit_practice": sc.unit_practice,
+                             "capacity": sc.capacity, "status": sc.status,
+                             "syllabi_count": syc.get(sc.id, 0),
+                             "updated_at_jalali": jalali_str(sc.updated_at, with_time=True)}
+                            for sc in scs]
+    out["syllabi_total"] = sum(syc.values())
+    out["chain_ok"] = len(scs) in CHAIN_OK_COUNTS
+    return out
+
+
+def _unique_course_by_id(db: Session, tenant_id, uc_id) -> UniqueCourse:
+    row = db.execute(select(UniqueCourse).where(
+        UniqueCourse.tenant_id == tenant_id,
+        UniqueCourse.id == _as_uuid(uc_id))).scalar_one_or_none()
+    if row is None:
+        raise not_found("درس یکتا یافت نشد.")
+    return row
+
+
+def create_unique_course(db: Session, tenant_id, actor: Actor, data: dict,
+                         request: Request | None = None) -> dict:
+    code = str(data.get("code") or "").strip()
+    title = _norm_title(data.get("title_fa"))
+    if not code or not title:
+        raise conflict("UC_CODE_TITLE_REQUIRED", "کد یکتا و عنوان فارسی درس الزامی است.")
+    dup = db.execute(select(UniqueCourse).where(
+        UniqueCourse.tenant_id == tenant_id, UniqueCourse.code == code)).scalar_one_or_none()
+    if dup is not None:
+        raise conflict("UC_DUPLICATE", f"درس یکتایی با کد «{code}» قبلاً ثبت شده است.")
+    row = UniqueCourse(tenant_id=tenant_id, code=code, title_fa=title, source="manual",
+                       **{k: data.get(k) for k in UC_FIELDS if k not in ("code", "title_fa") and data.get(k) is not None})
+    db.add(row)
+    db.flush()
+    out = _uc_out(db, tenant_id, row)
+    record_audit(db, tenant_id, actor, "unique_course.create", "unique_course", str(row.id),
+                 None, out, request=request, note="درج دستی درس یکتا")
+    return out
+
+
+def update_unique_course(db: Session, tenant_id, actor: Actor, uc_id, data: dict,
+                         request: Request | None = None) -> dict:
+    row = _unique_course_by_id(db, tenant_id, uc_id)
+    before = _uc_out(db, tenant_id, row)
+    changed = []
+    for k in UC_FIELDS:
+        if k not in data:
+            continue
+        v = data[k]
+        if k in ("unit_theory", "unit_practice", "capacity"):
+            v = _as_int(v)
+        elif isinstance(v, str):
+            v = v.strip() or None
+            if v is None and k in ("code", "title_fa", "status"):
+                continue  # خالی‌کردن کد/عنوان/وضعیت مجاز نیست
+        if k == "code" and v and v != row.code:
+            dup = db.execute(select(UniqueCourse).where(
+                UniqueCourse.tenant_id == tenant_id, UniqueCourse.code == v,
+                UniqueCourse.id != row.id)).scalar_one_or_none()
+            if dup is not None:
+                raise conflict("UC_DUPLICATE", f"درس یکتایی با کد «{v}» قبلاً ثبت شده است.")
+        if v != getattr(row, k):
+            setattr(row, k, v)
+            changed.append(k)
+    db.flush()
+    if not changed:
+        return before
+    after = _uc_out(db, tenant_id, row)
+    record_audit(db, tenant_id, actor, "unique_course.update", "unique_course", str(row.id),
+                 before, after, request=request,
+                 note=f"ویرایش درس یکتا — فیلدها: {', '.join(changed)}")
+    return after
+
+
+def delete_unique_course(db: Session, tenant_id, actor: Actor, uc_id,
+                         request: Request | None = None) -> dict:
+    row = _unique_course_by_id(db, tenant_id, uc_id)
+    sp_count = db.execute(select(func.count()).select_from(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id, SplitCourse.unique_course_id == row.id)).scalar()
+    if sp_count:
+        raise conflict("UC_HAS_SPLITS",
+                       f"این درس یکتا {sp_count} درس تفکیکی دارد — ابتدا آن‌ها را حذف کنید.")
+    before = _uc_out(db, tenant_id, row)
+    db.execute(delete(UniqueCourse).where(
+        UniqueCourse.tenant_id == tenant_id, UniqueCourse.id == row.id))
+    db.flush()
+    record_audit(db, tenant_id, actor, "unique_course.delete", "unique_course", str(row.id),
+                 before, None, request=request, note="حذف درس یکتا")
+    return {"deleted": True, "code": row.code}
+
+
+def _sc_out(db: Session, tenant_id, row: SplitCourse, syc: dict | None = None) -> dict:
+    if syc is None:
+        syc = {str(row.id): db.execute(select(func.count()).select_from(CourseSyllabus).where(
+            CourseSyllabus.split_course_id == row.id)).scalar() or 0}
+    return {"id": str(row.id), "unique_course_id": str(row.unique_course_id),
+            "code": row.code, "title": row.title, "year_label": row.year_label,
+            "cohort_set": row.cohort_set, "unit_theory": row.unit_theory,
+            "unit_practice": row.unit_practice, "capacity": row.capacity,
+            "status": row.status, "source": row.source, "external_id": row.external_id,
+            "extra": row.extra or {}, "syllabi_count": syc.get(str(row.id), 0),
+            "updated_at": row.updated_at,
+            "updated_at_jalali": jalali_str(row.updated_at, with_time=True)}
+
+
+def list_split_courses(db: Session, tenant_id, unique_course_id: str | None = None,
+                       year: str | None = None, cohort: str | None = None,
+                       search: str | None = None, status: str | None = None,
+                       limit: int = 1000, offset: int = 0) -> dict:
+    stmt = select(SplitCourse).where(SplitCourse.tenant_id == tenant_id)
+    if unique_course_id:
+        uc_uuid = _as_uuid(unique_course_id)
+        if uc_uuid is None:
+            raise not_found("شناسه درس یکتا نامعتبر است.")
+        stmt = stmt.where(SplitCourse.unique_course_id == uc_uuid)
+    if year:
+        stmt = stmt.where(SplitCourse.year_label == year.strip())
+    if cohort:
+        stmt = stmt.where(SplitCourse.cohort_set == cohort.strip())
+    if status:
+        stmt = stmt.where(SplitCourse.status == status)
+    if search:
+        like = f"%{search.strip()}%"
+        stmt = stmt.join(UniqueCourse, UniqueCourse.id == SplitCourse.unique_course_id).where(
+            SplitCourse.title.ilike(like) | UniqueCourse.title_fa.ilike(like) |
+            UniqueCourse.code.ilike(like))
+    total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
+    rows = db.execute(stmt.order_by(SplitCourse.year_label.nullslast(), SplitCourse.cohort_set,
+                                    SplitCourse.title)
+                      .limit(limit).offset(offset)).scalars().all()
+    syc = dict(db.execute(
+        select(CourseSyllabus.split_course_id, func.count()).where(
+            CourseSyllabus.split_course_id.in_([r.id for r in rows])).group_by(
+            CourseSyllabus.split_course_id)).all()) if rows else {}
+    syc = {str(k): v for k, v in syc.items()}
+    uc_ids = {r.unique_course_id for r in rows}
+    ucs = {u.id: u for u in db.execute(select(UniqueCourse).where(
+        UniqueCourse.tenant_id == tenant_id, UniqueCourse.id.in_(uc_ids))).scalars().all()} if uc_ids else {}
+    items = []
+    for r in rows:
+        uc = ucs.get(r.unique_course_id)
+        items.append({**_sc_out(db, tenant_id, r, syc),
+                      "unique_course": ({"id": str(uc.id), "code": uc.code,
+                                         "title_fa": uc.title_fa, "section": uc.section}
+                                        if uc else None)})
+    return {"total": total, "items": items}
+
+
+def get_split_course(db: Session, tenant_id, sc_id) -> dict:
+    row = db.execute(select(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id, SplitCourse.id == sc_id)).scalar_one_or_none()
+    if row is None:
+        raise not_found("درس تفکیکی یافت نشد.")
+    out = _sc_out(db, tenant_id, row)
+    uc = _unique_course_by_id(db, tenant_id, row.unique_course_id)
+    out["unique_course"] = _uc_out(db, tenant_id, uc)
+    syls = db.execute(select(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id,
+        CourseSyllabus.split_course_id == row.id).order_by(CourseSyllabus.source_set)).scalars().all()
+    out["syllabi"] = [{"id": str(s.id), "source_set": s.source_set, "title_fa": s.title_fa,
+                       "title_en": s.title_en, "course_code": s.course_code,
+                       "unit_theory": s.unit_theory, "unit_practice": s.unit_practice,
+                       "updated_at_jalali": jalali_str(s.updated_at, with_time=True)} for s in syls]
+    return out
+
+
+def create_split_course(db: Session, tenant_id, actor: Actor, data: dict,
+                        request: Request | None = None) -> dict:
+    uc = _unique_course_by_id(db, tenant_id, data.get("unique_course_id"))
+    title = _norm_title(data.get("title")) or uc.title_fa
+    year_label = (str(data.get("year_label")).strip() or None) if data.get("year_label") else None
+    cohort_set = (str(data.get("cohort_set")).strip() or None) if data.get("cohort_set") else None
+    dup = db.execute(select(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id, SplitCourse.unique_course_id == uc.id,
+        SplitCourse.year_label == year_label, SplitCourse.cohort_set == cohort_set)).scalar_one_or_none()
+    if dup is not None:
+        raise conflict("SC_DUPLICATE",
+                       "برای این درس یکتا، درس تفکیکی با همین سال/مجموعه قبلاً ثبت شده است.")
+    row = SplitCourse(tenant_id=tenant_id, unique_course_id=uc.id, title=title,
+                      year_label=year_label, cohort_set=cohort_set, source="manual",
+                      **{k: data.get(k) for k in SC_FIELDS
+                         if k not in ("title", "year_label", "cohort_set") and data.get(k) is not None})
+    db.add(row)
+    db.flush()
+    out = _sc_out(db, tenant_id, row)
+    record_audit(db, tenant_id, actor, "split_course.create", "split_course", str(row.id),
+                 None, out, request=request, note="درج دستی درس تفکیکی")
+    return out
+
+
+def update_split_course(db: Session, tenant_id, actor: Actor, sc_id, data: dict,
+                        request: Request | None = None) -> dict:
+    row = db.execute(select(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id, SplitCourse.id == _as_uuid(sc_id))).scalar_one_or_none()
+    if row is None:
+        raise not_found("درس تفکیکی یافت نشد.")
+    before = _sc_out(db, tenant_id, row)
+    changed = []
+    if "unique_course_id" in data and str(data["unique_course_id"]) != str(row.unique_course_id):
+        uc = _unique_course_by_id(db, tenant_id, data.get("unique_course_id"))
+        row.unique_course_id = uc.id
+        changed.append("unique_course_id")
+    for k in SC_FIELDS:
+        if k not in data:
+            continue
+        v = data[k]
+        if k in ("unit_theory", "unit_practice", "capacity"):
+            v = _as_int(v)
+        elif k in ("code", "title", "year_label", "cohort_set", "status"):
+            v = _norm_title(v) if k == "title" else (str(v).strip() if v is not None else None)
+            if not v:
+                v = None
+        if v != getattr(row, k):
+            setattr(row, k, v)
+            changed.append(k)
+    if {"unique_course_id", "year_label", "cohort_set"} & set(changed):
+        dup = db.execute(select(SplitCourse).where(
+            SplitCourse.tenant_id == tenant_id,
+            SplitCourse.unique_course_id == row.unique_course_id,
+            SplitCourse.year_label == row.year_label, SplitCourse.cohort_set == row.cohort_set,
+            SplitCourse.id != row.id)).scalar_one_or_none()
+        if dup is not None:
+            raise conflict("SC_DUPLICATE",
+                           "برای این درس یکتا، درس تفکیکی با همین سال/مجموعه قبلاً ثبت شده است.")
+    db.flush()
+    if not changed:
+        return before
+    after = _sc_out(db, tenant_id, row)
+    record_audit(db, tenant_id, actor, "split_course.update", "split_course", str(row.id),
+                 before, after, request=request,
+                 note=f"ویرایش درس تفکیکی — فیلدها: {', '.join(changed)}")
+    return after
+
+
+def delete_split_course(db: Session, tenant_id, actor: Actor, sc_id,
+                        request: Request | None = None) -> dict:
+    row = db.execute(select(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id, SplitCourse.id == _as_uuid(sc_id))).scalar_one_or_none()
+    if row is None:
+        raise not_found("درس تفکیکی یافت نشد.")
+    before = _sc_out(db, tenant_id, row)
+    n_syl = db.execute(select(func.count()).select_from(CourseSyllabus).where(
+        CourseSyllabus.split_course_id == row.id)).scalar() or 0
+    if n_syl:  # سرفصل‌های متصل جدا می‌شوند (حذف نمی‌شوند) و به‌عنوان بدون پیوند گزارش می‌شوند
+        db.execute(update(CourseSyllabus).where(
+            CourseSyllabus.split_course_id == row.id).values(split_course_id=None))
+    db.execute(delete(SplitCourse).where(
+        SplitCourse.tenant_id == tenant_id, SplitCourse.id == row.id))
+    db.flush()
+    record_audit(db, tenant_id, actor, "split_course.delete", "split_course", str(row.id),
+                 before, None, request=request,
+                 note=f"حذف درس تفکیکی — {n_syl} سرفصل از پیوند خارج شد")
+    return {"deleted": True, "unlinked_syllabi": n_syl}
+
+
+def upsert_darsyar_courses(db: Session, tenant_id, actor: Actor, rows: list[dict],
+                           request: Request | None = None) -> dict:
+    """ایمپورت ردیف‌های صفحه /admin/courses سامانه درس‌یار۳۶۰.
+
+    هر ردیف یک «درس تفکیکی» است (کد یکتا + سال/مجموعه)؛ درس یکتا از کد یکتا ساخته
+    و تکمیل می‌شود. ایمپورت مجدد همان داده بروزرسانی می‌کند (idempotent بر کلید منبع).
+    """
+    created_uc = updated_uc = created_sc = updated_sc = skipped = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            skipped += 1
+            continue
+        code = str(row.get("unique_code") or "").strip()
+        title = _norm_title(row.get("title"))
+        if not code or not title:
+            skipped += 1
+            continue
+        section = str(row.get("section") or "").strip() or None
+        unit_theory, unit_practice = _as_int(row.get("unit_theory")), _as_int(row.get("unit_practice"))
+        capacity = _as_int(row.get("capacity"))
+        prereq = str(row.get("prereq") or "").strip() or None
+        year_raw = str(row.get("year") or "").strip()
+        cohort = str(row.get("type") or "").strip() or None
+        year_label = year_raw if year_raw and year_raw != "ناپیوسته" else None
+        if cohort is None and year_raw == "ناپیوسته":
+            cohort = "ناپیوسته"
+        external_id = str(row.get("external_id") or row.get("row") or "").strip() or None
+
+        uc = db.execute(select(UniqueCourse).where(
+            UniqueCourse.tenant_id == tenant_id, UniqueCourse.code == code)).scalar_one_or_none()
+        if uc is None:
+            uc = UniqueCourse(tenant_id=tenant_id, code=code, title_fa=title, section=section,
+                              unit_theory=unit_theory, unit_practice=unit_practice,
+                              capacity=capacity, prerequisite=prereq,
+                              source="darsyar360", extra={"source_url": "darsyar360.ir/admin/courses"})
+            db.add(uc)
+            db.flush()
+            created_uc += 1
+        else:
+            # تکمیل فیلدهای خالی از منبع — مقادیر ثبت‌شده دستی بازنویسی نمی‌شود
+            if uc.section is None and section:
+                uc.section = section
+            if _norm_title(uc.title_fa) != title:
+                uc.title_fa = title
+            if uc.unit_theory is None and unit_theory is not None:
+                uc.unit_theory = unit_theory
+            if uc.unit_practice is None and unit_practice is not None:
+                uc.unit_practice = unit_practice
+            if uc.capacity is None and capacity is not None:
+                uc.capacity = capacity
+            if uc.prerequisite is None and prereq:
+                uc.prerequisite = prereq
+            if uc.source == "manual":
+                uc.source = "darsyar360"
+            updated_uc += 1
+        db.flush()
+
+        sc = db.execute(select(SplitCourse).where(
+            SplitCourse.tenant_id == tenant_id, SplitCourse.unique_course_id == uc.id,
+            SplitCourse.year_label == year_label, SplitCourse.cohort_set == cohort)).scalar_one_or_none()
+        if sc is None:
+            sc = SplitCourse(tenant_id=tenant_id, unique_course_id=uc.id, title=title,
+                             year_label=year_label, cohort_set=cohort,
+                             unit_theory=unit_theory, unit_practice=unit_practice,
+                             capacity=capacity, source="darsyar360", external_id=external_id)
+            db.add(sc)
+            created_sc += 1
+        else:
+            if sc.title != title:
+                sc.title = title
+            if sc.unit_theory is None and unit_theory is not None:
+                sc.unit_theory = unit_theory
+            if sc.unit_practice is None and unit_practice is not None:
+                sc.unit_practice = unit_practice
+            if sc.capacity is None and capacity is not None:
+                sc.capacity = capacity
+            if sc.external_id is None:
+                sc.external_id = external_id
+            updated_sc += 1
+    db.flush()
+    total = created_uc + updated_uc + created_sc + updated_sc
+    linked = link_syllabi_to_split_courses(db, tenant_id) if total else 0
+    if total:
+        log_fetch(db, tenant_id, direction="in", domain="unique-courses", source="darsyar360",
+                  endpoint="darsyar360.ir/admin/courses", record_count=len(rows),
+                  error=(f"رد {skipped} ردیف بدون کد/عنوان" if skipped else None))
+        record_audit(db, tenant_id, actor, "unique_course.import", "unique_course", None,
+                     None, {"rows": len(rows), "created_unique": created_uc,
+                            "updated_unique": updated_uc, "created_split": created_sc,
+                            "updated_split": updated_sc, "skipped": skipped,
+                            "linked_syllabi": linked},
+                     request=request, note="ایمپورت درس‌های تفکیکی از درس‌یار۳۶۰")
+    return {"created_unique": created_uc, "updated_unique": updated_uc,
+            "created_split": created_sc, "updated_split": updated_sc,
+            "skipped": skipped, "linked_syllabi": linked}
+
+
+def link_syllabi_to_split_courses(db: Session, tenant_id) -> int:
+    """اتصال خودکار سرفصل‌های بدون پیوند به درس تفکیکی بر تطبیق عنوان.
+
+    ترجیح سال بر اساس مجموعه سرفصل (۱۳۹۴ → سال ۱۳۹۴؛ CE403/NP1400 → سال ۱۴۰۳)؛
+    در غیبت تطبیق هم‌سال، هر تطبیق عنوان پذیرفته می‌شود.
+    """
+    SET_YEAR = {"1394": "1394", "CE403": "1403", "NP1400": "1403"}
+    syls = db.execute(select(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id,
+        CourseSyllabus.split_course_id.is_(None))).scalars().all()
+    if not syls:
+        return 0
+    scs = db.execute(select(SplitCourse).where(SplitCourse.tenant_id == tenant_id)).scalars().all()
+    by_title: dict[str, list] = {}
+    for sc in scs:
+        by_title.setdefault(_norm_title(sc.title), []).append(sc)
+    linked = 0
+    for s in syls:
+        candidates = by_title.get(_norm_title(s.title_fa)) or by_title.get(_norm_title(s.title_en)) or []
+        if not candidates:
+            continue
+        pref = SET_YEAR.get(s.source_set)
+        sc = next((c for c in candidates if c.year_label == pref), None) or \
+            next((c for c in candidates if c.year_label), None) or candidates[0]
+        s.split_course_id = sc.id
+        linked += 1
+    db.flush()
+    return linked
 
 
 def _syllabus_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:

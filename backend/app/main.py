@@ -95,6 +95,8 @@ async def lifespan(app: FastAPI):
 
     if settings.AUTO_CREATE_TABLES:
         Base.metadata.create_all(engine)
+        from app.core.database import ensure_columns
+        ensure_columns(engine)
         log.info("Tables ensured (AUTO_CREATE_TABLES=true) — در تولید از Alembic استفاده کنید.")
     if settings.SEED_DEMO:
         from app.seed import seed_demo
@@ -122,7 +124,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PayehYar360 — Shared Core & Master Data",
     description="هسته مشترک و اطلاعات پایه پلتفرم دانشجو۳۶۰ (پایه‌یار۳۶۰) — شرکت ماه‌افزار هوشمند رسا",
-    version="1.0.11",
+    version="1.0.12",
     lifespan=lifespan,
     docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json",
 )
@@ -181,7 +183,7 @@ def meta():
     from app.messaging import rabbitmq
     out = {
         "app": "payehyar360-shared-core",
-        "version": "1.0.11",
+        "version": "1.0.12",
         "env": s.ENV,
         "auth_mode": "dev" if s.DEV_AUTH else "oidc",
         "dev_mode": s.DEV_AUTH,

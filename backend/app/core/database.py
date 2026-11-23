@@ -30,6 +30,28 @@ if settings.DATABASE_URL.startswith("sqlite"):
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, class_=Session)
 
 
+def ensure_columns(engine) -> None:
+    """افزودن ستون‌های جدید به جداول موجود پس از create_all.
+
+    create_all جدول جدید می‌سازد اما ستون جدید به جدول موجود اضافه نمی‌کند؛
+    در بوت‌استرپ پرتیبل (SQLite) ارتقای نسخه بدون از دست رفتن داده به این نیاز است.
+    """
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    col_type = "UUID" if engine.dialect.name == "postgresql" else "CHAR(32)"
+    wanted = {
+        "md_course_syllabi": [("split_course_id", col_type)],
+    }
+    with engine.begin() as conn:
+        for table, cols in wanted.items():
+            if not insp.has_table(table):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table)}
+            for name, ctype in cols:
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ctype}"))
+
+
 def get_db():
     """نشست درخواست؛ تراکنش توسط لایه سرویس/مسیر با commit صریح مدیریت می‌شود."""
     db = SessionLocal()

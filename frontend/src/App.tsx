@@ -18,6 +18,8 @@ import Instructors from './features/masterdata/Instructors'
 import Classrooms from './features/masterdata/Classrooms'
 import MasterServices from './features/masterdata/MasterServices'
 import Syllabi from './features/masterdata/Syllabi'
+import UniqueCourses from './features/masterdata/UniqueCourses'
+import SplitCourses from './features/masterdata/SplitCourses'
 
 const NAV = [
   { to: '/', label: 'داشبورد', icon: '▦', end: true },
@@ -26,6 +28,8 @@ const NAV = [
   { to: '/references', label: 'اطلاعات پایه', icon: '📚' },
   { to: '/instructors', label: 'اساتید', icon: '🧑‍🏫' },
   { to: '/classrooms', label: 'کلاس‌ها و سالن‌ها', icon: '🏫' },
+  { to: '/unique-courses', label: 'درس‌های یکتا', icon: '🎯' },
+  { to: '/split-courses', label: 'درس‌های تفکیکی', icon: '🧩' },
   { to: '/syllabi', label: 'سرفصل دروس', icon: '📖' },
   { to: '/mappings', label: 'نگاشت شناسه', icon: '🔗' },
   { to: '/ownership', label: 'مالکیت داده', icon: '🔐' },
@@ -142,7 +146,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-foot muted small">
-          نسخه ۱.۰.۷ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
+          نسخه ۱.۰.۱۲ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
         </div>
       </aside>
       <div className="main">
@@ -169,6 +173,8 @@ export default function App() {
             <Route path="/instructors" element={<Instructors />} />
             <Route path="/classrooms" element={<Classrooms />} />
             <Route path="/syllabi" element={<Syllabi />} />
+            <Route path="/unique-courses" element={<UniqueCourses />} />
+            <Route path="/split-courses" element={<SplitCourses />} />
             <Route path="/services" element={<MasterServices />} />
             <Route path="/mappings" element={<Mappings />} />
             <Route path="/ownership" element={<Ownership />} />
