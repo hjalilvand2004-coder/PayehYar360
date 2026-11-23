@@ -9,16 +9,21 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+import sys
 import uuid
+from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import Actor
 from app.modules.identities.service import register_mapping
 from app.modules.integrations.models import Tenant
 from app.modules.integrations.service import create_installation, create_tenant
+from app.modules.masterdata.models import CourseSyllabus
+from app.modules.masterdata import service as md_service
 from app.modules.persons.models import PersonIdentifier
 from app.modules.persons.service import add_contact, add_identifier, create_person
 from app.modules.references.service import create_item, create_set
@@ -162,9 +167,45 @@ DEMO_PERSONS = [
 ]
 
 
+def _syllabi_seed_items() -> list[dict]:
+    """سرفصل‌های مصوب پارس‌شده از فایل‌های پیوست — app/data/syllabi.json (در باینری: _MEIPASS)."""
+    candidates = [
+        Path(__file__).resolve().parent / "data" / "syllabi.json",
+        Path(getattr(sys, "_MEIPASS", ".")) / "app" / "data" / "syllabi.json",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8")).get("items", [])
+            except Exception as exc:  # noqa: BLE001
+                log.warning("syllabi seed file unreadable (%s): %s", p, exc)
+    return []
+
+
+def _seed_syllabi(db: Session) -> None:
+    """واردکردن idempotent سرفصل‌ها در مشتری demo — حتی برای نصب‌های موجود."""
+    tenant = db.execute(select(Tenant).where(Tenant.code == DEMO_TENANT_CODE)).scalar_one_or_none()
+    if tenant is None:
+        return
+    has_any = db.execute(select(func.count()).select_from(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant.id)).scalar() or 0
+    if has_any:
+        return
+    items = _syllabi_seed_items()
+    if not items:
+        log.info("Syllabi seed file not found — پرش (قابل ایمپورت از پنل یا API)")
+        return
+    actor = Actor(kind="user", subject="seed", name="Seed", roles={"tenant_admin", "steward"},
+                  tenant_codes=[DEMO_TENANT_CODE], issuer="dev")
+    out = md_service.import_syllabi(db, tenant.id, actor, items, source="syllabi-files")
+    db.commit()
+    log.info("Syllabi seeded: %s", out)
+
+
 def seed_demo(db: Session) -> None:
     existing = db.execute(select(Tenant).where(Tenant.code == DEMO_TENANT_CODE)).scalar_one_or_none()
     if existing is not None:
+        _seed_syllabi(db)
         return
     log.info("Seeding demo tenant ...")
     actor = Actor(kind="user", subject="seed", name="Seed", roles={"tenant_admin", "steward"},
@@ -270,3 +311,4 @@ def seed_demo(db: Session) -> None:
 
     db.commit()
     log.info("Demo seed done (tenant=%s, installations=%d)", tenant.code, len(installs))
+    _seed_syllabi(db)

@@ -75,6 +75,38 @@ def import_classrooms(payload: ImportItems, request: Request,
     return out
 
 
+# ---------- سرفصل‌های مصوب دروس ----------
+
+
+@router.get("/masterdata/syllabi-stats")
+def syllabi_stats(actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor", "auditor")),
+                  tenant: Tenant = Depends(get_tenant), db: Session = Depends(get_db)):
+    return svc.syllabi_stats(db, tenant.id)
+
+
+@router.get("/masterdata/syllabi")
+def list_syllabi(search: str | None = None, source_set: str | None = None, limit: int = 500,
+                 actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor", "auditor")),
+                 tenant: Tenant = Depends(get_tenant), db: Session = Depends(get_db)):
+    return {"items": svc.list_syllabi(db, tenant.id, search, source_set, limit)}
+
+
+@router.get("/masterdata/syllabi/{syllabus_id}")
+def get_syllabus(syllabus_id: uuid.UUID,
+                 actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor", "auditor")),
+                 tenant: Tenant = Depends(get_tenant), db: Session = Depends(get_db)):
+    return svc.get_syllabus(db, tenant.id, syllabus_id)
+
+
+@router.post("/masterdata/import/syllabi", status_code=201)
+def import_syllabi(payload: ImportItems, request: Request,
+                   actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor")),
+                   tenant: Tenant = Depends(get_tenant), db: Session = Depends(get_db)):
+    out = svc.import_syllabi(db, tenant.id, actor, payload.items, payload.source)
+    db.commit()
+    return out
+
+
 @router.post("/masterdata/sync/instructors")
 def sync_instructors(request: Request,
                      actor: Actor = Depends(require_roles("steward", "tenant_admin", "master_data_editor")),

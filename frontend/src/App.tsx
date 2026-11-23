@@ -17,6 +17,7 @@ import Audit from './features/audit/Audit'
 import Instructors from './features/masterdata/Instructors'
 import Classrooms from './features/masterdata/Classrooms'
 import MasterServices from './features/masterdata/MasterServices'
+import Syllabi from './features/masterdata/Syllabi'
 
 const NAV = [
   { to: '/', label: 'داشبورد', icon: '▦', end: true },
@@ -25,6 +26,7 @@ const NAV = [
   { to: '/references', label: 'اطلاعات پایه', icon: '📚' },
   { to: '/instructors', label: 'اساتید', icon: '🧑‍🏫' },
   { to: '/classrooms', label: 'کلاس‌ها و سالن‌ها', icon: '🏫' },
+  { to: '/syllabi', label: 'سرفصل دروس', icon: '📖' },
   { to: '/mappings', label: 'نگاشت شناسه', icon: '🔗' },
   { to: '/ownership', label: 'مالکیت داده', icon: '🔐' },
   { to: '/quality', label: 'کیفیت داده', icon: '♻️' },
@@ -166,6 +168,7 @@ export default function App() {
             <Route path="/references" element={<References />} />
             <Route path="/instructors" element={<Instructors />} />
             <Route path="/classrooms" element={<Classrooms />} />
+            <Route path="/syllabi" element={<Syllabi />} />
             <Route path="/services" element={<MasterServices />} />
             <Route path="/mappings" element={<Mappings />} />
             <Route path="/ownership" element={<Ownership />} />

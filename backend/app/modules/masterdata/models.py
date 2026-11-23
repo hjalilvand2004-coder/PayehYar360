@@ -90,3 +90,48 @@ class FetchLog(Base, IdMixin, TimestampMixin):
     correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     occurred_at: Mapped[str] = mapped_column(String(40), nullable=False)        # UTC ISO
     occurred_at_jalali: Mapped[str] = mapped_column(String(40), nullable=False)  # ۱۴۰۵/۰۹/۰۱ ۱۲:۳۴
+
+
+class CourseSyllabus(Base, IdMixin, TimestampMixin):
+    """سرفصل مصوب یک درس — از فایل‌های سرفصل وزارت علوم یا درج دستی.
+    یکتایی بر (tenant, مجموعه, فایل منبع)؛ سایر سامانه‌ها از دامنه course-syllabi مصرف می‌کنند.
+    """
+    __tablename__ = "md_course_syllabi"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "source_set", "source_file", name="uq_md_syllabus_file"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    source_set: Mapped[str] = mapped_column(String(30), nullable=False)       # 1394|CE403|NP1400
+    source_file: Mapped[str] = mapped_column(String(300), nullable=False)     # نام فایل منبع
+    title_fa: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    title_en: Mapped[str] = mapped_column(String(300), nullable=False)
+    course_code: Mapped[str | None] = mapped_column(String(60), nullable=True)   # مثل CSE-313 یا 28-3
+    course_type: Mapped[str | None] = mapped_column(String(120), nullable=True)  # نظری/عملی/اختیاری…
+    unit_theory: Mapped[int | None] = mapped_column(nullable=True)
+    unit_practice: Mapped[int | None] = mapped_column(nullable=True)
+    hour_theory: Mapped[int | None] = mapped_column(nullable=True)
+    hour_practice: Mapped[int | None] = mapped_column(nullable=True)
+    prerequisites: Mapped[str | None] = mapped_column(Text, nullable=True)
+    corequisites: Mapped[str | None] = mapped_column(Text, nullable=True)
+    general_goal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evaluation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    references: Mapped[str | None] = mapped_column(Text, nullable=True)          # منابع علمی
+    has_text: Mapped[bool] = mapped_column(default=True, nullable=False)         # False = اسکن (نیازمند OCR)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
+    source: Mapped[str] = mapped_column(String(40), default="manual", nullable=False)
+    extra: Mapped[dict | None] = mapped_column(JSON_V, nullable=True)
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)            # متن کامل استخراج‌شده
+
+
+class CourseSyllabusTopic(Base, IdMixin, TimestampMixin):
+    """سرفصل/ریز محتوای یک درس — ترتیب حفظ می‌شود؛ ساعت نظری/عملی در صورت وجود."""
+    __tablename__ = "md_course_syllabus_topics"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    syllabus_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    seq: Mapped[int] = mapped_column(nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    hours: Mapped[int | None] = mapped_column(nullable=True)            # زمان نظری
+    hours_practice: Mapped[int | None] = mapped_column(nullable=True)   # زمان عملی

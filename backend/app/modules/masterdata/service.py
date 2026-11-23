@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.common import statuses
@@ -18,7 +18,8 @@ from app.core.config import settings
 from app.core.errors import conflict, forbidden, not_found, unauthorized
 from app.core.security import Actor
 from app.modules.organizations.models import Organization
-from app.modules.masterdata.models import Classroom, FetchLog, Instructor, ServiceClient
+from app.modules.masterdata.models import (Classroom, CourseSyllabus, CourseSyllabusTopic,
+                                           FetchLog, Instructor, ServiceClient)
 from app.modules.references.models import ReferenceItem, ReferenceSet
 
 # ---------- دامنه‌های سرویس‌دهی به سایر سامانه‌ها ----------
@@ -138,6 +139,8 @@ def fetch_domain(db: Session, client: ServiceClient, domain: str, since: str | N
         items = _org_items(db, client.tenant_id)
     elif domain == "unique-courses":
         items = _course_items(db, client.tenant_id)
+    elif domain == "course-syllabi":
+        items = _syllabus_items(db, client.tenant_id, since)
     else:
         items = _ref_items(db, client.tenant_id, since)
     duration = int((time.monotonic() - t0) * 1000)
@@ -157,7 +160,16 @@ SERVICE_DOMAINS: dict[str, tuple[str, str]] = {
     "classrooms": ("کلاس‌ها و سالن‌ها", "masterdata"),
     "organizations": ("ساختار سازمانی", "core"),
     "unique-courses": ("درس‌های یکتا", "references"),
+    "course-syllabi": ("سرفصل‌های مصوب دروس", "masterdata"),
     "reference-items": ("آیتم‌های مرجع", "references"),
+}
+
+# مجموعه‌های سرفصل — برچسب فارسی برای پنل و کاتالوگ
+SYLLABI_SETS: dict[str, str] = {
+    "1394": "سرفصل‌های مصوب ۱۳۹۴",
+    "CE403": "سرفصل مصوب مهندسی کامپیوتر — سری ۴۰۳",
+    "NP1400": "سرفصل مصوب ۱۴۰۰ (NP)",
+    "MANUAL": "درج دستی",
 }
 
 
@@ -484,9 +496,11 @@ def catalog(db: Session, tenant_id) -> dict:
             ReferenceItem.tenant_id == tenant_id, ReferenceItem.set_id.in_(course_ids))).scalar() or 0
     ref_count = db.execute(select(func.count()).select_from(ReferenceItem).where(
         ReferenceItem.tenant_id == tenant_id)).scalar() or 0
+    syllabi_count = db.execute(select(func.count()).select_from(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id, CourseSyllabus.status == "active")).scalar() or 0
     counts = {"instructors": instructors_count, "classrooms": classrooms_count,
               "organizations": org_count, "unique-courses": course_count,
-              "reference-items": ref_count}
+              "course-syllabi": syllabi_count, "reference-items": ref_count}
     items = []
     for domain, (title, _prov) in SERVICE_DOMAINS.items():
         last_in = _last_log(db, tenant_id, domain, "in")
@@ -552,3 +566,176 @@ def list_classrooms(db: Session, tenant_id, search: str | None, limit: int = 500
              "source": c.source, "updated_at": c.updated_at,
              "updated_at_jalali": jalali_str(c.updated_at, with_time=True)}
             for c in rows]
+
+
+# ---------- سرفصل‌های مصوب دروس (course-syllabi) ----------
+
+def _as_int(v) -> int | None:
+    if v is None or v == "":
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _syllabus_fields(row: dict) -> dict:
+    return {
+        "title_fa": (str(row.get("title_fa")).strip() or None) if row.get("title_fa") else None,
+        "title_en": str(row.get("title_en")).strip(),
+        "course_code": (str(row.get("course_code")).strip() or None) if row.get("course_code") else None,
+        "course_type": (str(row.get("course_type")).strip() or None) if row.get("course_type") else None,
+        "unit_theory": _as_int(row.get("unit_theory")),
+        "unit_practice": _as_int(row.get("unit_practice")),
+        "hour_theory": _as_int(row.get("hour_theory")),
+        "hour_practice": _as_int(row.get("hour_practice")),
+        "prerequisites": row.get("prerequisites"),
+        "corequisites": row.get("corequisites"),
+        "general_goal": row.get("general_goal"),
+        "evaluation": row.get("evaluation"),
+        "references": row.get("references"),
+        "has_text": bool(row.get("has_text", True)),
+        "extra": row.get("extra") if isinstance(row.get("extra"), dict) else None,
+        "raw_text": row.get("raw_text") or None,
+    }
+
+
+def import_syllabi(db: Session, tenant_id, actor: Actor, items: list[dict],
+                   source: str = "manual") -> dict:
+    """درج/بروزرسانی سرفصل‌ها — یکتایی بر (tenant, مجموعه, فایل منبع)؛ سرفصل‌ها بازنویسی می‌شوند."""
+    created = updated = skipped = 0
+    for row in items:
+        if not isinstance(row, dict):
+            skipped += 1
+            continue
+        title_en = str(row.get("title_en") or "").strip()
+        if not title_en:
+            title_en = str(row.get("title_fa") or "").strip()  # فال‌بک: عنوان فارسی
+        if not title_en:
+            skipped += 1
+            continue
+        sset = str(row.get("source_set") or "MANUAL").strip() or "MANUAL"
+        sfile = str(row.get("source_file") or title_en).strip()
+        fields = _syllabus_fields(row)
+        row_db = db.execute(select(CourseSyllabus).where(
+            CourseSyllabus.tenant_id == tenant_id,
+            CourseSyllabus.source_set == sset,
+            CourseSyllabus.source_file == sfile)).scalar_one_or_none()
+        if row_db is None:
+            row_db = CourseSyllabus(tenant_id=tenant_id, source_set=sset, source_file=sfile,
+                                    source=source, **fields)
+            db.add(row_db)
+            created += 1
+        else:
+            for k, v in fields.items():
+                setattr(row_db, k, v)
+            row_db.source = source
+            updated += 1
+        db.flush()
+
+        topics = [t for t in (row.get("topics") or []) if isinstance(t, dict) and str(t.get("title") or "").strip()]
+        db.execute(delete(CourseSyllabusTopic).where(CourseSyllabusTopic.syllabus_id == row_db.id))
+        for idx, t in enumerate(topics, start=1):
+            db.add(CourseSyllabusTopic(
+                syllabus_id=row_db.id, seq=_as_int(t.get("seq")) or idx,
+                title=str(t.get("title")).strip(),
+                hours=_as_int(t.get("hours")), hours_practice=_as_int(t.get("hours_practice"))))
+    db.flush()
+    total = created + updated
+    if total:
+        log_fetch(db, tenant_id, direction="in", domain="course-syllabi", source=source,
+                  endpoint="masterdata/import/syllabi", record_count=total,
+                  error=f"رد {skipped} ردیف بدون عنوان انگلیسی" if skipped else None)
+    return {"created": created, "updated": updated, "total": total, "skipped": skipped}
+
+
+def list_syllabi(db: Session, tenant_id, search: str | None, source_set: str | None,
+                 limit: int = 500) -> list[dict]:
+    stmt = select(CourseSyllabus).where(CourseSyllabus.tenant_id == tenant_id)
+    if search:
+        like = f"%{search.strip()}%"
+        stmt = stmt.where(CourseSyllabus.title_fa.ilike(like) |
+                          CourseSyllabus.title_en.ilike(like) |
+                          CourseSyllabus.course_code.ilike(like))
+    if source_set:
+        stmt = stmt.where(CourseSyllabus.source_set == source_set)
+    rows = db.execute(stmt.order_by(CourseSyllabus.source_set, CourseSyllabus.title_en)
+                      .limit(limit)).scalars().all()
+    tcount = dict(db.execute(
+        select(CourseSyllabusTopic.syllabus_id, func.count()).group_by(
+            CourseSyllabusTopic.syllabus_id)).all())
+    return [{"id": str(s.id), "source_set": s.source_set, "source_file": s.source_file,
+             "title_fa": s.title_fa, "title_en": s.title_en, "course_code": s.course_code,
+             "course_type": s.course_type, "unit_theory": s.unit_theory,
+             "unit_practice": s.unit_practice, "hour_theory": s.hour_theory,
+             "hour_practice": s.hour_practice, "has_text": s.has_text,
+             "status": s.status, "topics_count": tcount.get(s.id, 0),
+             "updated_at": s.updated_at,
+             "updated_at_jalali": jalali_str(s.updated_at, with_time=True)}
+            for s in rows]
+
+
+def get_syllabus(db: Session, tenant_id, syllabus_id) -> dict:
+    row = db.execute(select(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id, CourseSyllabus.id == syllabus_id)).scalar_one_or_none()
+    if row is None:
+        raise not_found("سرفصل یافت نشد.")
+    topics = db.execute(select(CourseSyllabusTopic).where(
+        CourseSyllabusTopic.syllabus_id == row.id).order_by(CourseSyllabusTopic.seq)).scalars().all()
+    return {
+        "id": str(row.id), "source_set": row.source_set, "source_file": row.source_file,
+        "title_fa": row.title_fa, "title_en": row.title_en, "course_code": row.course_code,
+        "course_type": row.course_type, "unit_theory": row.unit_theory,
+        "unit_practice": row.unit_practice, "hour_theory": row.hour_theory,
+        "hour_practice": row.hour_practice, "prerequisites": row.prerequisites,
+        "corequisites": row.corequisites, "general_goal": row.general_goal,
+        "evaluation": row.evaluation, "references": row.references,
+        "has_text": row.has_text, "status": row.status, "source": row.source,
+        "extra": row.extra or {}, "raw_text": row.raw_text,
+        "topics": [{"seq": t.seq, "title": t.title, "hours": t.hours,
+                    "hours_practice": t.hours_practice} for t in topics],
+        "updated_at": row.updated_at, "updated_at_jalali": jalali_str(row.updated_at, with_time=True),
+    }
+
+
+def syllabi_stats(db: Session, tenant_id) -> dict:
+    sets = dict(db.execute(
+        select(CourseSyllabus.source_set, func.count()).where(
+            CourseSyllabus.tenant_id == tenant_id).group_by(CourseSyllabus.source_set)).all())
+    topics_count = db.execute(
+        select(func.count()).select_from(CourseSyllabusTopic).join(
+            CourseSyllabus, CourseSyllabusTopic.syllabus_id == CourseSyllabus.id).where(
+            CourseSyllabus.tenant_id == tenant_id)).scalar() or 0
+    scanned = db.execute(select(func.count()).select_from(CourseSyllabus).where(
+        CourseSyllabus.tenant_id == tenant_id, CourseSyllabus.has_text.is_(False))).scalar() or 0
+    return {"total": sum(sets.values()), "by_set": {k: sets[k] for k in sorted(sets)},
+            "topics_total": topics_count, "scanned_without_text": scanned,
+            "sets_labels": SYLLABI_SETS}
+
+
+def _syllabus_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:
+    stmt = select(CourseSyllabus).where(CourseSyllabus.tenant_id == tenant_id,
+                                        CourseSyllabus.status == "active")
+    if since:
+        stmt = stmt.where(CourseSyllabus.updated_at > since)
+    rows = db.execute(stmt.order_by(CourseSyllabus.source_set, CourseSyllabus.title_en)).scalars().all()
+    ids = [r.id for r in rows]
+    topics_by: dict = {}
+    if ids:
+        for t in db.execute(select(CourseSyllabusTopic).where(
+                CourseSyllabusTopic.syllabus_id.in_(ids)).order_by(
+                CourseSyllabusTopic.syllabus_id, CourseSyllabusTopic.seq)).scalars().all():
+            topics_by.setdefault(t.syllabus_id, []).append(t)
+    return [{"source_set": s.source_set, "source_file": s.source_file,
+             "course_code": s.course_code, "title_fa": s.title_fa, "title_en": s.title_en,
+             "course_type": s.course_type,
+             "units": {"theory": s.unit_theory, "practice": s.unit_practice},
+             "hours": {"theory": s.hour_theory, "practice": s.hour_practice},
+             "prerequisites": s.prerequisites, "corequisites": s.corequisites,
+             "general_goal": s.general_goal, "evaluation": s.evaluation,
+             "references": s.references, "has_text": s.has_text,
+             "topics": [{"seq": t.seq, "title": t.title, "hours": t.hours,
+                         "hours_practice": t.hours_practice}
+                        for t in topics_by.get(s.id, [])],
+             "updated_at": s.updated_at}
+            for s in rows]
