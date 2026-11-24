@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     DEV_AUTH: bool = False
 
     # --- CORS ---
-    ALLOWED_ORIGINS: str = "http://188.212.96.235:8094,http://localhost:8094,http://localhost:5173"
+    ALLOWED_ORIGINS: str = ("http://188.212.96.235:8094,http://localhost:8094,http://localhost:5173, "
+                            "http://188.212.96.235:8084,http://127.0.0.1:8084,http://localhost:8084")  # ۸۰۸۴ = سامانه یادگیری هوشمند (پرتیبل/استقرار)
 
     # --- محدودسازی نرخ (0 = خاموش) ---
     RATE_LIMIT_PER_MINUTE: int = 0

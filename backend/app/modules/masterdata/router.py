@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -385,9 +385,20 @@ def _service_client_from_key(request: Request, db: Session = Depends(get_db),
 
 
 @router.get("/services/masterdata/{domain}")
-def service_masterdata(domain: str, since: str | None = None,
+def service_masterdata(request: Request, response: Response,
+                       domain: str, since: str | None = None,
                        tenant_client: ServiceClient = Depends(_service_client_from_key),
                        db: Session = Depends(get_db)):
-    """نقطه اتصال همه سامانه‌های اکوسیستم برای گرفتن اطلاعات پایه — هر واکشی لاگ می‌شود."""
+    """نقطه اتصال همه سامانه‌های اکوسیستم برای گرفتن اطلاعات پایه — هر واکشی لاگ می‌شود.
+
+    پشتیبانی از If-None-Match: مصرف‌کننده ETag دریافتی قبلی را می‌فرستد؛ در صورت
+    تطابق با وضعیت فعلی داده، پاسخ 304 بدون بدنه برمی‌گردد (صرفه‌جویی انتقال)."""
     endpoint = f"/api/v1/services/masterdata/{domain}" + (f"?since={since}" if since else "")
-    return svc.fetch_domain(db, tenant_client, domain, since, endpoint)
+    payload, etag, _canonical = svc.fetch_domain(
+        db, tenant_client, domain, since, endpoint,
+        if_none_match=request.headers.get("if-none-match"))
+    if etag:
+        response.headers["ETag"] = etag
+    if payload is None:
+        return Response(status_code=304, headers={"ETag": etag})
+    return payload

@@ -70,11 +70,19 @@ def _unique_course_items(db: Session, tenant_id, since: str | None = None) -> li
 
 
 def _split_course_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:
-    """درس‌های تفکیکی برای سایر سامانه‌ها — کلید: (کد درس یکتا + سال + مجموعه)."""
-    stmt = select(SplitCourse, UniqueCourse).join(
+    """درس‌های تفکیکی برای سایر سامانه‌ها — کلید: (کد درس یکتا + سال + مجموعه).
+
+    رفع باگ استقرار زنده (۲۰۲۶-۱۱-۲۳): در v1.0.12 عبارت ``order_by(uc.code, …)``
+    داخل همان list comprehension نوشته شده بود؛ پایتون عبارت تکرارشونده را
+    «قبل از» bind شدن متغیرهای حلقه (sc, uc) ارزیابی می‌کند و در نتیجه اولین
+    واکشی این دامنه با ``NameError: name 'uc' is not defined`` (HTTP 500)
+    شکست می‌خورد. ترتیب‌دهی اکنون با ویژگی‌های کلاس ORM پیش از اجرای کوئری است.
+    """
+    stmt = (select(SplitCourse, UniqueCourse).join(
         UniqueCourse, (UniqueCourse.id == SplitCourse.unique_course_id) &
         (UniqueCourse.tenant_id == SplitCourse.tenant_id)).where(
         SplitCourse.tenant_id == tenant_id)
+        .order_by(UniqueCourse.code, SplitCourse.year_label.nullslast()))
     if since:
         stmt = stmt.where(SplitCourse.updated_at > since)
     return [{"set": "split_courses", "code": sc.code, "title": sc.title,
@@ -85,7 +93,7 @@ def _split_course_items(db: Session, tenant_id, since: str | None = None) -> lis
                        "capacity": sc.capacity, "external_id": sc.external_id,
                        "source": sc.source},
              "status": sc.status, "updated_at": sc.updated_at}
-            for sc, uc in db.execute(stmt.order_by(uc.code, sc.year_label.nullslast())).all()]
+            for sc, uc in db.execute(stmt).all()]
 
 
 def _ref_items(db: Session, tenant_id, since: str | None = None) -> list[dict]:
@@ -144,41 +152,74 @@ def authenticate_service(db: Session, api_key: str) -> ServiceClient:
     return client
 
 
+# نام‌های جایگزین دامنه که سایر سامانه‌ها ممکن است بخوانند (قرارداد مستند هم پوشش داده می‌شود)
+_DOMAIN_ALIASES = {"syllabi": "course-syllabi"}
+
+
+def _domain_etag(domain: str, items: list[dict]) -> str:
+    """اثر انگشت وضعیت دامنه برای If-None-Match → 304 — بدون پرس‌وجوی اضافه.
+
+    تغییر هر رکورد (یا تعداد آن‌ها) اثر انگشت را عوض می‌کند؛ سامانه مصرف‌کننده
+    ETag را در درخواست بعدی با If-None-Match می‌فرستد و در صورت تطابق، بدنه
+    (احتمالاً چندصدهزار بایت) منتقل نمی‌شود.
+    """
+    stamps = sorted(str(i.get("updated_at") or "") for i in items)
+    src = f"{domain}|{len(items)}|{stamps[-1] if stamps else ''}"
+    return '"' + hashlib.sha256(src.encode()).hexdigest()[:32] + '"'
+
+
 def fetch_domain(db: Session, client: ServiceClient, domain: str, since: str | None,
-                 endpoint: str) -> dict:
-    if domain not in SERVICE_DOMAINS:
-        raise not_found(f"دامنه «{domain}» تعریف نشده است؛ دامنه‌های معتبر: {', '.join(SERVICE_DOMAINS)}")
-    if client.scopes and domain not in client.scopes:
-        log_fetch(db, client.tenant_id, direction="out", domain=domain, client_code=client.code,
+                 endpoint: str, if_none_match: str | None = None) -> tuple[dict | None, str, str]:
+    """واکشی یک دامنه برای کلاینت سرویس — خروجی: (payload یا None برای 304، etag، نام دامنه).
+
+    - alias: «syllabi» همان «course-syllabi» سرویس داده می‌شود (هر دو نام معتبرند).
+    - ETag: هدر If-None-Match مصرف‌کننده با اثر انگشت داده مقایسه می‌شود؛ تطابق =
+      پاسخ 304 بدون انتقال بدنه (لاگ واکشی با items_returned=0 ثبت می‌گردد).
+    """
+    canonical = _DOMAIN_ALIASES.get(domain, domain)
+    if canonical not in SERVICE_DOMAINS:
+        raise not_found(f"دامنه «{domain}» تعریف نشده است؛ دامنه‌های معتبر: "
+                        f"{', '.join(SERVICE_DOMAINS)} (نام جایگزین syllabi)")
+    if client.scopes and canonical not in client.scopes:
+        log_fetch(db, client.tenant_id, direction="out", domain=canonical, client_code=client.code,
                   client_id=client.id, endpoint=endpoint, status="failed", error="scope_not_allowed")
         db.commit()
-        raise forbidden("SCOPE_FORBIDDEN", f"این کلید به دامنه «{domain}» دسترسی ندارد.")
+        raise forbidden("SCOPE_FORBIDDEN", f"این کلید به دامنه «{canonical}» دسترسی ندارد.")
     t0 = time.monotonic()
-    title, provider = SERVICE_DOMAINS[domain]
-    if domain == "instructors":
+    title, provider = SERVICE_DOMAINS[canonical]
+    if canonical == "instructors":
         items = _instructor_items(db, client.tenant_id, since)
-    elif domain == "classrooms":
+    elif canonical == "classrooms":
         items = _classroom_items(db, client.tenant_id, since)
-    elif domain == "organizations":
+    elif canonical == "organizations":
         items = _org_items(db, client.tenant_id)
-    elif domain == "unique-courses":
+    elif canonical == "unique-courses":
         items = _unique_course_items(db, client.tenant_id, since)
-    elif domain == "split-courses":
+    elif canonical == "split-courses":
         items = _split_course_items(db, client.tenant_id, since)
-    elif domain == "course-syllabi":
+    elif canonical == "course-syllabi":
         items = _syllabus_items(db, client.tenant_id, since)
     else:
         items = _ref_items(db, client.tenant_id, since)
     duration = int((time.monotonic() - t0) * 1000)
+    etag = _domain_etag(canonical, items)
+    if if_none_match and if_none_match.strip() == etag:
+        # بدون تغییر — پاسخ 304: لاگ ثبت می‌شود ولی داده منتقل نمی‌شود
+        _log_out(db, client, canonical, endpoint, 0, duration)
+        db.commit()
+        return None, etag, canonical
     now = datetime.now(timezone.utc)
-    _log_out(db, client, domain, endpoint, len(items), duration)
+    _log_out(db, client, canonical, endpoint, len(items), duration)
     db.commit()
-    return {
-        "ok": True, "domain": domain, "title": title, "count": len(items),
+    payload = {
+        "ok": True, "domain": canonical, "title": title, "count": len(items),
         "generated_at": now.isoformat(timespec="seconds"),
         "generated_at_jalali": jalali_str(now, with_time=True),
         "items": items,
     }
+    if domain != canonical:
+        payload["requested_domain"] = domain
+    return payload, etag, canonical
 
 
 SERVICE_DOMAINS: dict[str, tuple[str, str]] = {
