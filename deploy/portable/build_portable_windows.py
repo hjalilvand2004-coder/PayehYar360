@@ -42,7 +42,7 @@ set "ALLOWED_ORIGINS=http://188.212.96.235:8094,http://localhost:8094,http://127
 if not exist "%ROOT%\data" mkdir "%ROOT%\data"
 
 echo ==========================================================
-echo   PayehYar360 - Shared Core ^& Master Data (portable v1.0.13)
+echo   PayehYar360 - Shared Core ^& Master Data (portable v1.0.14)
 echo   Panel ^& API : http://localhost:8094
 echo   Swagger     : http://localhost:8094/docs
 echo   Login demo  : user=steward1  roles=steward,tenant_admin  tenant=demo
@@ -72,11 +72,17 @@ pause
 endlocal
 """
 
-README = """# PayehYar360 — نسخه پرتیبل Windows (v1.0.13)
+README = """# PayehYar360 — نسخه پرتیبل Windows (v1.0.14)
 
 اجرا روی هر ویندوز ۶۴بیتی **بدون نصب Python یا PyCharm** — پایتون و همه وابستگی‌ها داخل همین پوشه است.
 
-## تازه‌های v1.0.13 (رفع مشکل واکشی دانشجو۳۶۰/یادگیری هوشمند)
+## تازه‌های v1.0.14 (رفع کامل وابستگی‌های بسته)
+- **رفع ModuleNotFoundError استارت:** ویل `annotated-doc==0.0.4` (وابستگی اجباری FastAPI 0.128) که در بسته v1.0.13 جا افتاده بود اضافه شد — start.bat اکنون بدون خطا بالا می‌آید.
+- **tzdata==2026.1:** برای اتصال PostgreSQL روی ویندوز (psycopg).
+- اگر بسته ویندوز v1.0.13 را قبلاً دانلود کرده‌اید، این بسته را جایگزین کنید.
+- چکر بستار وابستگی‌ها در مخزن: `deploy/portable/check_win_wheels_closure.py`.
+
+## تغییرات v1.0.13 (رفع مشکل واکشی دانشجو۳۶۰/یادگیری هوشمند)
 - **رفع باگ 500 در واکشی split-courses** (NameError ترتیب‌دهی در v1.0.12).
 - **ETag/304:** پاسخ `/api/v1/services/masterdata/{domain}` هدر ETag دارد؛ `If-None-Match` با داده بدون تغییر → 304.
 - **نام جایگزین `syllabi`:** معادل `course-syllabi` (پاسخ با requested_domain).
@@ -141,7 +147,7 @@ def main() -> None:
     (OUT / "README-PORTABLE.md").write_text(README, encoding="utf-8")
 
     # ۵) زیپ نهایی
-    out_zip = ROOT / "PayehYar360-Portable-Windows-v1.0.13.zip"
+    out_zip = ROOT / "PayehYar360-Portable-Windows-v1.0.14.zip"
     if out_zip.exists():
         out_zip.unlink()
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:

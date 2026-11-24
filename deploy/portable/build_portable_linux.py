@@ -1,4 +1,4 @@
-"""ساخت بسته پرتیبل Linux v1.0.13 — بیلد PyInstaller + README + zip."""
+"""ساخت بسته پرتیبل Linux v1.0.14 — بیلد PyInstaller + README + zip."""
 import subprocess
 import shutil
 import sys
@@ -7,14 +7,18 @@ from pathlib import Path
 PROJECT = Path("/home/z/my-project/download/student360-shared-core")
 BUILD = Path("/tmp/portable/build/PayehYar360-Portable-Linux")
 BIN = PROJECT / "backend" / "dist" / "payehyar360-server"
-ZIP = Path("/tmp/portable/PayehYar360-Portable-Linux-v1.0.13.zip")
+ZIP = Path("/tmp/portable/PayehYar360-Portable-Linux-v1.0.14.zip")
 PYI_WORK = Path("/tmp/portable/pyi")
 
-README = """# PayehYar360 — نسخه پرتیبل Linux (v1.0.13)
+README = """# PayehYar360 — نسخه پرتیبل Linux (v1.0.14)
 
 اجرا روی هر لینوکس x86_64 **بدون نصب Python** — همه وابستگی‌ها داخل باینری است.
 
-## تازه‌های v1.0.13 (رفع مشکل واکشی دانشجو۳۶۰/یادگیری هوشمند)
+## تازه‌های v1.0.14 (هم‌ترازی نسخه با بسته ویندوز اصلاح‌شده)
+- باینری با همان کد v1.0.13 بازبیلد شد تا شماره نسخه (openapi.json → 1.0.14) با بسته ویندوز یکی باشد.
+- اصلاح اصلی این چرخه مربوط به بسته ویندوز است: ویل‌های `annotated-doc` و `tzdata` اضافه شد — اگر بسته ویندوز v1.0.13 قبلی را دارید، از ریلیز جایگزین کنید.
+
+## تغییرات v1.0.13 (رفع مشکل واکشی دانشجو۳۶۰/یادگیری هوشمند)
 - **رفع باگ 500 در واکشی split-courses** (NameError ترتیب‌دهی در v1.0.12) — همگام‌سازی
   «درس‌های تفکیکی» اکنون بدون خطا کار می‌کند.
 - **ETag/304:** هر پاسخ `/api/v1/services/masterdata/{domain}` هدر ETag دارد؛
@@ -47,7 +51,7 @@ ALLOWED_ORIGINS=http://188.212.96.235:8094,http://188.212.96.235:8084,http://127
 
 ## راستی‌آزمایی سریع پس از استقرار
 ```bash
-curl -s http://localhost:8094/openapi.json | grep -o '"version":"[^"]*"' | head -1   # باید 1.0.13 باشد
+curl -s http://localhost:8094/openapi.json | grep -o '"version":"[^"]*"' | head -1   # باید 1.0.14 باشد
 KEY="pyk_..."   # کلید صادرشده در پنل «سرویس‌کلاینت‌ها»
 for D in unique-courses split-courses course-syllabi syllabi; do
   curl -s -o /dev/null -w "$D → %{http_code}\\n" -H "X-API-Key: $KEY" \\
@@ -67,7 +71,7 @@ done
 
 
 def build_binary() -> None:
-    """بیلد باینری با کد فعلی (v1.0.13)."""
+    """بیلد باینری با کد فعلی (v1.0.14)."""
     cmd = [
         sys.executable, "-m", "PyInstaller", "--clean", "--onefile", "--noconfirm",
         "--name", "payehyar360-server",
