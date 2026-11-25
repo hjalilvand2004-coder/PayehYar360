@@ -1,4 +1,4 @@
-"""ساخت بسته پرتیبل Linux v1.0.14 — بیلد PyInstaller + README + zip."""
+"""ساخت بسته پرتیبل Linux v1.0.15 — بیلد PyInstaller + README + zip."""
 import subprocess
 import shutil
 import sys
@@ -7,16 +7,20 @@ from pathlib import Path
 PROJECT = Path("/home/z/my-project/download/student360-shared-core")
 BUILD = Path("/tmp/portable/build/PayehYar360-Portable-Linux")
 BIN = PROJECT / "backend" / "dist" / "payehyar360-server"
-ZIP = Path("/tmp/portable/PayehYar360-Portable-Linux-v1.0.14.zip")
+ZIP = Path("/tmp/portable/PayehYar360-Portable-Linux-v1.0.15.zip")
 PYI_WORK = Path("/tmp/portable/pyi")
 
-README = """# PayehYar360 — نسخه پرتیبل Linux (v1.0.14)
+README = """# PayehYar360 — نسخه پرتیبل Linux (v1.0.15)
 
 اجرا روی هر لینوکس x86_64 **بدون نصب Python** — همه وابستگی‌ها داخل باینری است.
 
-## تازه‌های v1.0.14 (هم‌ترازی نسخه با بسته ویندوز اصلاح‌شده)
-- باینری با همان کد v1.0.13 بازبیلد شد تا شماره نسخه (openapi.json → 1.0.14) با بسته ویندوز یکی باشد.
-- اصلاح اصلی این چرخه مربوط به بسته ویندوز است: ویل‌های `annotated-doc` و `tzdata` اضافه شد — اگر بسته ویندوز v1.0.13 قبلی را دارید، از ریلیز جایگزین کنید.
+## تازه‌های v1.0.15 — تم «Aurora Premium»
+- **بازطراحی کامل پنل:** تم شیشه‌ای (Glassmorphism) + گرادیان آرورا (بنفش→صورتی) طبق سند تم سازمانی.
+- **حالت شب پیش‌فرض + حالت روز:** دکمهٔ «تغییر تم» در نوار بالا و صفحهٔ ورود؛ انتخاب در localStorage ذخیره می‌شود.
+- باینری با dist تم‌شده بازبیلد شد؛ openapi.json → 1.0.15.
+
+## تغییرات v1.0.14 (هم‌ترازی نسخه)
+- کد همان v1.0.13؛ ویل‌های `annotated-doc` و `tzdata` در بسته ویندوز کامل شدند.
 
 ## تغییرات v1.0.13 (رفع مشکل واکشی دانشجو۳۶۰/یادگیری هوشمند)
 - **رفع باگ 500 در واکشی split-courses** (NameError ترتیب‌دهی در v1.0.12) — همگام‌سازی
@@ -51,7 +55,7 @@ ALLOWED_ORIGINS=http://188.212.96.235:8094,http://188.212.96.235:8084,http://127
 
 ## راستی‌آزمایی سریع پس از استقرار
 ```bash
-curl -s http://localhost:8094/openapi.json | grep -o '"version":"[^"]*"' | head -1   # باید 1.0.14 باشد
+curl -s http://localhost:8094/openapi.json | grep -o '"version":"[^"]*"' | head -1   # باید 1.0.15 باشد
 KEY="pyk_..."   # کلید صادرشده در پنل «سرویس‌کلاینت‌ها»
 for D in unique-courses split-courses course-syllabi syllabi; do
   curl -s -o /dev/null -w "$D → %{http_code}\\n" -H "X-API-Key: $KEY" \\
@@ -71,7 +75,7 @@ done
 
 
 def build_binary() -> None:
-    """بیلد باینری با کد فعلی (v1.0.14)."""
+    """بیلد باینری با کد فعلی (v1.0.15)."""
     cmd = [
         sys.executable, "-m", "PyInstaller", "--clean", "--onefile", "--noconfirm",
         "--name", "payehyar360-server",

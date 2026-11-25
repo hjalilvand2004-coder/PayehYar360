@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from './AuthContext'
+import { ThemeToggle } from '../components/ui'
 
 const ROLE_OPTIONS = [
   { value: 'viewer', label: 'مشاهده‌گر اطلاعات پایه' },
@@ -48,6 +49,7 @@ export default function DevLogin() {
 
   return (
     <div className="login-wrap">
+      <div className="login-theme-toggle"><ThemeToggle /></div>
       <form className="login-card" onSubmit={submit}>
         <div className="login-logo">۳۶۰</div>
         <h1>پایه‌یار۳۶۰ — هسته مشترک</h1>

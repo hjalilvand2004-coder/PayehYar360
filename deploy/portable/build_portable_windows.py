@@ -42,7 +42,7 @@ set "ALLOWED_ORIGINS=http://188.212.96.235:8094,http://localhost:8094,http://127
 if not exist "%ROOT%\data" mkdir "%ROOT%\data"
 
 echo ==========================================================
-echo   PayehYar360 - Shared Core ^& Master Data (portable v1.0.14)
+echo   PayehYar360 - Shared Core ^& Master Data (portable v1.0.15)
 echo   Panel ^& API : http://localhost:8094
 echo   Swagger     : http://localhost:8094/docs
 echo   Login demo  : user=steward1  roles=steward,tenant_admin  tenant=demo
@@ -72,14 +72,18 @@ pause
 endlocal
 """
 
-README = """# PayehYar360 — نسخه پرتیبل Windows (v1.0.14)
+README = """# PayehYar360 — نسخه پرتیبل Windows (v1.0.15)
 
 اجرا روی هر ویندوز ۶۴بیتی **بدون نصب Python یا PyCharm** — پایتون و همه وابستگی‌ها داخل همین پوشه است.
 
-## تازه‌های v1.0.14 (رفع کامل وابستگی‌های بسته)
+## تازه‌های v1.0.15 — تم «Aurora Premium»
+- **بازطراحی کامل پنل:** تم شیشه‌ای (Glassmorphism) + گرادیان آرورا (بنفش→صورتی) طبق سند تم سازمانی.
+- **حالت شب پیش‌فرض + حالت روز:** دکمهٔ «تغییر تم» در نوار بالا و صفحهٔ ورود؛ انتخاب در localStorage ذخیره و بدون پرش رنگ اعمال می‌شود.
+- **فونت وزیرمتن self-host** — پنل آفلاین هم دقیقاً همین قیافه را دارد.
+
+## تغییرات v1.0.14 (رفع کامل وابستگی‌های بسته)
 - **رفع ModuleNotFoundError استارت:** ویل `annotated-doc==0.0.4` (وابستگی اجباری FastAPI 0.128) که در بسته v1.0.13 جا افتاده بود اضافه شد — start.bat اکنون بدون خطا بالا می‌آید.
 - **tzdata==2026.1:** برای اتصال PostgreSQL روی ویندوز (psycopg).
-- اگر بسته ویندوز v1.0.13 را قبلاً دانلود کرده‌اید، این بسته را جایگزین کنید.
 - چکر بستار وابستگی‌ها در مخزن: `deploy/portable/check_win_wheels_closure.py`.
 
 ## تغییرات v1.0.13 (رفع مشکل واکشی دانشجو۳۶۰/یادگیری هوشمند)
@@ -147,7 +151,7 @@ def main() -> None:
     (OUT / "README-PORTABLE.md").write_text(README, encoding="utf-8")
 
     # ۵) زیپ نهایی
-    out_zip = ROOT / "PayehYar360-Portable-Windows-v1.0.14.zip"
+    out_zip = ROOT / "PayehYar360-Portable-Windows-v1.0.15.zip"
     if out_zip.exists():
         out_zip.unlink()
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:

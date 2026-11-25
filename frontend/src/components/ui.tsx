@@ -2,6 +2,31 @@ import { useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { HELP, helpTopicForPath } from '../shared/helpContent'
 
+/** دکمهٔ تغییر تم شب/روز — مطابق ساختار مرجع Aurora (localStorage + کلاس light-theme). */
+export function ThemeToggle() {
+  const [light, setLight] = useState(() => document.documentElement.classList.contains('light-theme'))
+  const toggle = () => {
+    const isLight = document.documentElement.classList.toggle('light-theme')
+    try { localStorage.setItem('theme', isLight ? 'light' : 'dark') } catch { /* حافظه در دسترس نیست */ }
+    setLight(isLight)
+  }
+  return (
+    <button className="theme-toggle" onClick={toggle} title="تغییر تم شب/روز">
+      {light ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.3 11.3 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+        </svg>
+      )}
+      <span>{light ? 'تم شب' : 'تم روز'}</span>
+    </button>
+  )
+}
+
 export function PageHead({ title, actions, subtitle }: { title: string; actions?: ReactNode; subtitle?: string }) {
   // دکمه «؟ راهنما» در سربرگ همه صفحات — محتوای جامع همان بخش در مودال باز می‌شود
   const topic = helpTopicForPath(useLocation().pathname)

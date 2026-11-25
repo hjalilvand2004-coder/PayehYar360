@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>پایه‌یار۳۶۰ — هسته مشترک و اطلاعات پایه</title>
     <!-- فونت وزیرمتن به‌صورت خودمیزبان در bundle — بدون نیاز به اینترنت -->
+    <!-- جلوگیری از پرش رنگ: تم ذخیره‌شده قبل از رندر اعمال می‌شود (تم Aurora) -->
+    <script>
+      (function(){try{var t=localStorage.getItem('theme');
+        if(t==='light')document.documentElement.classList.add('light-theme');
+      }catch(e){}})();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from './auth/AuthContext'
 import DevLogin from './auth/DevLogin'
 import OidcCallback from './auth/OidcCallback'
+import { ThemeToggle } from './components/ui'
 import Dashboard from './features/dashboard/Dashboard'
 import PersonsList from './features/persons/PersonsList'
 import PersonDetail from './features/persons/PersonDetail'
@@ -50,6 +51,7 @@ function LocalLoginPage() {
   }, [])
   return (
     <div className="login-wrap">
+      <div className="login-theme-toggle"><ThemeToggle /></div>
       <div className="login-card">
         <div className="login-logo">۳۶۰</div>
         <h1>پایه‌یار۳۶۰ — هسته مشترک</h1>
@@ -91,6 +93,7 @@ function SsoRedirect() {
   }, [])
   return (
     <div className="login-wrap">
+      <div className="login-theme-toggle"><ThemeToggle /></div>
       <div className="login-card" style={{ textAlign: 'center' }}>
         <div className="login-logo">۳۶۰</div>
         <h1>ورود یکپارچه سازمانی</h1>
@@ -146,7 +149,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-foot muted small">
-          نسخه ۱.۰.۱۲ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
+          نسخه ۱.۰.۱۵ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
         </div>
       </aside>
       <div className="main">
@@ -155,6 +158,7 @@ export default function App() {
             {meta?.dev_mode ? 'حالت توسعه (هویت آزمایشی)' : `ورود یکپارچه: ${meta?.oidc.issuer?.replace(/^https?:\/\//, '')}`}
           </div>
           <div className="topbar-user">
+            <ThemeToggle />
             {auth.tenant && <span className="chip">{auth.tenant}</span>}
             {me?.person && <span className="chip ok">شخص متصل: {me.person.display_name}</span>}
             {me?.roles?.length ? <span className="chip">{me.roles.length} نقش</span> : null}
