@@ -42,7 +42,7 @@ set "ALLOWED_ORIGINS=http://188.212.96.235:8094,http://localhost:8094,http://127
 if not exist "%ROOT%\data" mkdir "%ROOT%\data"
 
 echo ==========================================================
-echo   PayehYar360 - Shared Core ^& Master Data (portable v1.0.15)
+echo   PayehYar360 - Shared Core ^& Master Data (portable v1.0.16)
 echo   Panel ^& API : http://localhost:8094
 echo   Swagger     : http://localhost:8094/docs
 echo   Login demo  : user=steward1  roles=steward,tenant_admin  tenant=demo
@@ -72,14 +72,18 @@ pause
 endlocal
 """
 
-README = """# PayehYar360 — نسخه پرتیبل Windows (v1.0.15)
+README = """# PayehYar360 — نسخه پرتیبل Windows (v1.0.16)
 
 اجرا روی هر ویندوز ۶۴بیتی **بدون نصب Python یا PyCharm** — پایتون و همه وابستگی‌ها داخل همین پوشه است.
 
-## تازه‌های v1.0.15 — تم «Aurora Premium»
-- **بازطراحی کامل پنل:** تم شیشه‌ای (Glassmorphism) + گرادیان آرورا (بنفش→صورتی) طبق سند تم سازمانی.
-- **حالت شب پیش‌فرض + حالت روز:** دکمهٔ «تغییر تم» در نوار بالا و صفحهٔ ورود؛ انتخاب در localStorage ذخیره و بدون پرش رنگ اعمال می‌شود.
-- **فونت وزیرمتن self-host** — پنل آفلاین هم دقیقاً همین قیافه را دارد.
+## تازه‌های v1.0.16 — بخش ویژه دانشجویان + هماهنگی با دانشگاه هوشمند
+- **رجیستری دانشجویان:** ثبت و مدیریت کامل دانشجویان — مشخصات هویتی، شماره تلفن همراه، شهر محل سکونت، دانشگاه، رشته تحصیلی و **مقطع تحصیلی** — با کنترل نسخه (If-Match)، ممیزی کامل و فیلترهای اختصاصی (مقطع/دانشگاه/شهر/وضعیت/منشأ).
+- **هماهنگی کامل با فضایار۳۶۰ (دانشگاه هوشمند — پورت 8095):** سینک دوسویه — pull از `GET /api/v1/students` فضایار و push با کلید API به `POST /api/v1/students/ingest` پایه‌یار؛ قرارداد کامل و نمونه کد: `docs/08-students-integration.md`.
+- **نگاشت هوشمند مقاطع:** برچسب فارسی (کارشناسی ارشد، دکتری و…) ↔ کد کانونی؛ تطبیق رکورد با اولویت ext_ref ← کد ملی ← شماره دانشجویی؛ گزارش کامل ایجاد/به‌روزرسانی/نادیده بعد از هر سینک.
+- تست‌ها: ۵۳/۵۳ سبز (۱۵ آزمون جدید دانشجو).
+
+## تغییرات v1.0.15 — تم «Aurora Premium»
+- بازطراحی شیشه‌ای پنل با گرادیان آرورا + حالت شب/روز با دکمه «تغییر تم» و فونت وزیرمتن self-host.
 
 ## تغییرات v1.0.14 (رفع کامل وابستگی‌های بسته)
 - **رفع ModuleNotFoundError استارت:** ویل `annotated-doc==0.0.4` (وابستگی اجباری FastAPI 0.128) که در بسته v1.0.13 جا افتاده بود اضافه شد — start.bat اکنون بدون خطا بالا می‌آید.
@@ -151,7 +155,7 @@ def main() -> None:
     (OUT / "README-PORTABLE.md").write_text(README, encoding="utf-8")
 
     # ۵) زیپ نهایی
-    out_zip = ROOT / "PayehYar360-Portable-Windows-v1.0.15.zip"
+    out_zip = ROOT / "PayehYar360-Portable-Windows-v1.0.16.zip"
     if out_zip.exists():
         out_zip.unlink()
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:

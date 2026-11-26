@@ -36,8 +36,9 @@ class Settings(BaseSettings):
     DEV_AUTH: bool = False
 
     # --- CORS ---
-    ALLOWED_ORIGINS: str = ("http://188.212.96.235:8094,http://localhost:8094,http://localhost:5173, "
-                            "http://188.212.96.235:8084,http://127.0.0.1:8084,http://localhost:8084")  # ۸۰۸۴ = سامانه یادگیری هوشمند (پرتیبل/استقرار)
+    # مبداهای سامانه یادگیری هوشمند (8084) — v1.0.13
+    ALLOWED_ORIGINS: str = ("http://188.212.96.235:8094,http://localhost:8094,http://localhost:5173,"
+                            "http://188.212.96.235:8084,http://127.0.0.1:8084,http://localhost:8084")
 
     # --- محدودسازی نرخ (0 = خاموش) ---
     RATE_LIMIT_PER_MINUTE: int = 0
@@ -61,6 +62,13 @@ class Settings(BaseSettings):
     SCHEDULER_USERNAME: str = ""     # کاربر دارای دسترسی «کلاس‌ها و سالن‌ها»
     SCHEDULER_PASSWORD: str = ""
     EXTERNAL_HTTP_TIMEOUT: float = 20.0
+
+    # --- دانشجویان: همگام‌سازی با دانشگاه هوشمند (فضایار۳۶۰ — پورت 8095) ---
+    # قرارداد کامل: docs/08-students-integration.md
+    SMART_UNI_BASE_URL: str = "http://188.212.96.235:8095"
+    SMART_UNI_STUDENTS_PATH: str = "/api/v1/students"
+    SMART_UNI_API_KEY: str = ""   # اگر فضایار برای خواندن فهرست، کلید بخواهد
+    STUDENTS_INGEST_KEY: str = ""  # کلید push سمت پایه‌یار (X-Api-Key برای POST /students/ingest)
 
     # --- RabbitMQ ---
     RABBITMQ_URL: str = ""  # خالی = انتشار غیرفعال؛ رویدادها در Outbox می‌مانند

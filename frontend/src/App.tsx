@@ -7,6 +7,7 @@ import { ThemeToggle } from './components/ui'
 import Dashboard from './features/dashboard/Dashboard'
 import PersonsList from './features/persons/PersonsList'
 import PersonDetail from './features/persons/PersonDetail'
+import StudentsList from './features/students/StudentsList'
 import Organizations from './features/organizations/Organizations'
 import References from './features/references/References'
 import Mappings from './features/mappings/Mappings'
@@ -25,6 +26,7 @@ import SplitCourses from './features/masterdata/SplitCourses'
 const NAV = [
   { to: '/', label: 'داشبورد', icon: '▦', end: true },
   { to: '/persons', label: 'اشخاص', icon: '👤' },
+  { to: '/students', label: 'دانشجویان', icon: '🎓' },
   { to: '/organizations', label: 'سازمان‌ها', icon: '🏛' },
   { to: '/references', label: 'اطلاعات پایه', icon: '📚' },
   { to: '/instructors', label: 'اساتید', icon: '🧑‍🏫' },
@@ -149,7 +151,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-foot muted small">
-          نسخه ۱.۰.۱۵ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
+          نسخه ۱.۰.۱۶ — اکوسیستم دانشجو۳۶۰ | ماه‌افزار هوشمند رسا
         </div>
       </aside>
       <div className="main">
@@ -172,6 +174,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/persons" element={<PersonsList />} />
             <Route path="/persons/:id" element={<PersonDetail />} />
+            <Route path="/students" element={<StudentsList />} />
             <Route path="/organizations" element={<Organizations />} />
             <Route path="/references" element={<References />} />
             <Route path="/instructors" element={<Instructors />} />

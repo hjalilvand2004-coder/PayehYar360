@@ -30,6 +30,9 @@ class EventType:
     REFERENCE_ITEM_UPDATED = "ReferenceItemUpdated"
     IDENTITY_ACCOUNT_LINKED = "IdentityAccountLinked"
     IDENTIFIER_MAPPING_UPDATED = "IdentifierMappingUpdated"
+    STUDENT_CREATED = "StudentCreated"
+    STUDENT_UPDATED = "StudentUpdated"
+    STUDENT_DEACTIVATED = "StudentDeactivated"
 
 
 def build_event(event_type: str, tenant_id: str, entity_type: str, entity_id: str,

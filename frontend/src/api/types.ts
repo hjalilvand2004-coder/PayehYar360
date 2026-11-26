@@ -240,3 +240,59 @@ export interface Me {
   person?: { id: string; display_name: string; status: string; version: number } | null
   linked?: boolean
 }
+
+export interface Student {
+  id: string
+  student_number: string
+  national_id: string
+  first_name: string
+  last_name: string
+  mobile: string
+  city: string
+  university_name: string
+  major_name: string
+  degree_level: string
+  status: string
+  source: string
+  version: number
+  updated_at: string
+}
+
+export interface StudentDetail extends Student {
+  father_name: string
+  gender: string
+  birth_date: string
+  phone: string
+  email: string
+  province: string
+  address: string
+  university_code: string
+  major_code: string
+  entrance_year: number | null
+  notes: string
+  ext_ref: string | null
+  synced_at: string | null
+  sync_batch: string | null
+  created_at: string
+}
+
+export interface StudentStats {
+  total: number
+  by_status: Record<string, number>
+  by_degree: Record<string, number>
+  by_source: Record<string, number>
+  last_synced_at: string | null
+}
+
+export interface SyncReport {
+  batch_id: string
+  mode: string
+  remote_status: number | null
+  total_remote: number
+  created: number
+  updated: number
+  unchanged?: number
+  skipped: Array<{ ref: string; reason: string }>
+  message: string
+  synced_at: string
+}

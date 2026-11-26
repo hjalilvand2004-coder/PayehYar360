@@ -1,4 +1,4 @@
-"""ساخت بسته پرتیبل Linux v1.0.15 — بیلد PyInstaller + README + zip."""
+"""ساخت بسته پرتیبل Linux v1.0.16 — بیلد PyInstaller + README + zip."""
 import subprocess
 import shutil
 import sys
@@ -7,17 +7,21 @@ from pathlib import Path
 PROJECT = Path("/home/z/my-project/download/student360-shared-core")
 BUILD = Path("/tmp/portable/build/PayehYar360-Portable-Linux")
 BIN = PROJECT / "backend" / "dist" / "payehyar360-server"
-ZIP = Path("/tmp/portable/PayehYar360-Portable-Linux-v1.0.15.zip")
+ZIP = Path("/tmp/portable/PayehYar360-Portable-Linux-v1.0.16.zip")
 PYI_WORK = Path("/tmp/portable/pyi")
 
-README = """# PayehYar360 — نسخه پرتیبل Linux (v1.0.15)
+README = """# PayehYar360 — نسخه پرتیبل Linux (v1.0.16)
 
 اجرا روی هر لینوکس x86_64 **بدون نصب Python** — همه وابستگی‌ها داخل باینری است.
 
-## تازه‌های v1.0.15 — تم «Aurora Premium»
-- **بازطراحی کامل پنل:** تم شیشه‌ای (Glassmorphism) + گرادیان آرورا (بنفش→صورتی) طبق سند تم سازمانی.
-- **حالت شب پیش‌فرض + حالت روز:** دکمهٔ «تغییر تم» در نوار بالا و صفحهٔ ورود؛ انتخاب در localStorage ذخیره می‌شود.
-- باینری با dist تم‌شده بازبیلد شد؛ openapi.json → 1.0.15.
+## تازه‌های v1.0.16 — بخش ویژه دانشجویان + هماهنگی با دانشگاه هوشمند
+- **رجیستری دانشجویان:** ثبت و مدیریت کامل — هویتی، همراه، شهر محل سکونت، دانشگاه، رشته و **مقطع تحصیلی** — با کنترل نسخه و ممیزی.
+- **هماهنگی کامل با فضایار۳۶۰ (پورت 8095):** سینک دوسویه (pull از `GET /api/v1/students` فضایار + push با کلید API به `POST /api/v1/students/ingest`) — قرارداد: `docs/08-students-integration.md`.
+- نگاشت هوشمند مقاطع و تطبیق رکورد (ext_ref ← کد ملی ← شماره دانشجویی)؛ گزارش کامل بعد از هر سینک.
+- باینری با ماژول دانشجو بازبیلد شد؛ openapi.json → 1.0.16. تست‌ها ۵۳/۵۳ سبز.
+
+## تغییرات v1.0.15 — تم «Aurora Premium»
+- بازطراحی شیشه‌ای پنل با گرادیان آرورا + حالت شب/روز با دکمه «تغییر تم».
 
 ## تغییرات v1.0.14 (هم‌ترازی نسخه)
 - کد همان v1.0.13؛ ویل‌های `annotated-doc` و `tzdata` در بسته ویندوز کامل شدند.
@@ -55,7 +59,7 @@ ALLOWED_ORIGINS=http://188.212.96.235:8094,http://188.212.96.235:8084,http://127
 
 ## راستی‌آزمایی سریع پس از استقرار
 ```bash
-curl -s http://localhost:8094/openapi.json | grep -o '"version":"[^"]*"' | head -1   # باید 1.0.15 باشد
+curl -s http://localhost:8094/openapi.json | grep -o '"version":"[^"]*"' | head -1   # باید 1.0.16 باشد
 KEY="pyk_..."   # کلید صادرشده در پنل «سرویس‌کلاینت‌ها»
 for D in unique-courses split-courses course-syllabi syllabi; do
   curl -s -o /dev/null -w "$D → %{http_code}\\n" -H "X-API-Key: $KEY" \\
@@ -75,7 +79,7 @@ done
 
 
 def build_binary() -> None:
-    """بیلد باینری با کد فعلی (v1.0.15)."""
+    """بیلد باینری با کد فعلی (v1.0.16)."""
     cmd = [
         sys.executable, "-m", "PyInstaller", "--clean", "--onefile", "--noconfirm",
         "--name", "payehyar360-server",
